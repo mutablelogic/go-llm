@@ -10,8 +10,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	deadline "github.com/mutablelogic/go-llm/internal/deadline"
-	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -34,8 +32,8 @@ type toolName struct {
 // PRIVATE METHODS
 
 func toolHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
-	router.Spec().AddTag(taggroup.ToolsAndAgents, documentation.Section(2, "Tool Operations").Body)
-	taggroup.Add(router.Spec(), taggroup.LLM, taggroup.ToolsAndAgents)
+	router.Spec().AddTag(llm.ToolsAndAgentsTag, documentation.Section(2, "Tool Operations").Body)
+	router.Spec().AddTagGroup(llm.TagGroup, llm.ToolsAndAgentsTag)
 	return errors.Join(
 		namespaceListHandlers(tools, router, documentation),
 		toolListHandlers(tools, router, documentation),
@@ -45,7 +43,7 @@ func toolHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentati
 
 func namespaceListHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/namespace", nil, func(path httprequest.PathItem) {
-		path.Tag(taggroup.ToolsAndAgents)
+		path.Tag(llm.ToolsAndAgentsTag)
 
 		// GET
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +62,7 @@ func namespaceListHandlers(tools *toolkit.Toolkit, router *httprouter.Router, do
 
 func toolListHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/tool", nil, func(path httprequest.PathItem) {
-		path.Tag(taggroup.ToolsAndAgents)
+		path.Tag(llm.ToolsAndAgentsTag)
 
 		// GET
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +86,7 @@ func toolListHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documen
 
 func toolGetCallHandlers(tools *toolkit.Toolkit, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/tool/{name}", jsonschema.MustFor[toolName](), func(path httprequest.PathItem) {
-		path.Tag(taggroup.ToolsAndAgents)
+		path.Tag(llm.ToolsAndAgentsTag)
 
 		// GET
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +140,7 @@ func toolGetCallHandlers(tools *toolkit.Toolkit, router *httprouter.Router, docu
 // then its result, or its error. A client which stops reading has each
 // write time out, rather than holding the tool up.
 func callToolStream(w http.ResponseWriter, r *http.Request, tools *toolkit.Toolkit, name string, input json.RawMessage) {
-	dw, err := deadline.New(w, streamWriteTimeout)
+	dw, err := httpresponse.NewDeadlineWriter(w, streamWriteTimeout)
 	if err != nil {
 		httpresponse.Error(w, httpresponse.ErrInternalError.With(err.Error()))
 		return

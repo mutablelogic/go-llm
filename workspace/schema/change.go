@@ -2,7 +2,7 @@ package schema
 
 import (
 	// Packages
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -14,7 +14,7 @@ import (
 // list_changed says
 type Change struct {
 	// Action is what happened: create, update, or delete
-	Action eventschema.EventAction `json:"action"`
+	Action eventschema.ChangeAction `json:"action"`
 
 	// URI is the folder's, or resource's, or empty, when it isn't known
 	URI string `json:"uri,omitempty"`

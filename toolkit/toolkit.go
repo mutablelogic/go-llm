@@ -16,8 +16,8 @@ import (
 	client "github.com/mutablelogic/go-client"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -79,7 +79,7 @@ type Namespace interface {
 	// than once at a time, such as by a toolkit and an MCP server. Watchers
 	// does this for a namespace whose tools change, and WatchTools for one
 	// whose tools don't.
-	Watch(ctx context.Context, ch chan<- eventschema.Event) error
+	Watch(ctx context.Context, ch chan<- eventschema.Change) error
 }
 
 // ToolPrompter is a namespace whose system prompt depends on which of its
@@ -207,7 +207,7 @@ func (self *Toolkit) Add(ns Namespace) error {
 	self.namespaces[namespace] = ns
 	for _, name := range slices.Sorted(maps.Keys(entries)) {
 		self.set(schema.CanonicalToolName(namespace, name), entries[name])
-		self.publish(eventschema.EventCreate, schema.CanonicalToolName(namespace, name))
+		self.publish(eventschema.ChangeCreate, schema.CanonicalToolName(namespace, name))
 	}
 	ctx, cancel := context.WithCancel(self.ctx)
 	self.watches[namespace] = cancel
@@ -239,7 +239,7 @@ func (self *Toolkit) Remove(ns Namespace) error {
 	}
 	for _, canonical := range slices.Sorted(maps.Keys(self.index[name])) {
 		self.unset(canonical)
-		self.publish(eventschema.EventDelete, canonical)
+		self.publish(eventschema.ChangeDelete, canonical)
 	}
 	return nil
 }
@@ -297,7 +297,7 @@ func (self *Toolkit) ClientOpts() []client.ClientOpt {
 // the namespace is removed, and changes each which changes. When the watch
 // fails, the namespace's tools are as they were.
 func (self *Toolkit) watch(ctx context.Context, ns Namespace) {
-	ch := make(chan eventschema.Event, 16)
+	ch := make(chan eventschema.Change, 16)
 	done := make(chan error, 1)
 	go func() { done <- ns.Watch(ctx, ch) }()
 	for {
@@ -313,14 +313,14 @@ func (self *Toolkit) watch(ctx context.Context, ns Namespace) {
 // changed changes the namespace's tools to those its Tools returns now,
 // when it's told the tool with the name changed, and publishes that it was
 // updated, when it was
-func (self *Toolkit) changed(ns Namespace, action eventschema.EventAction, name string) {
+func (self *Toolkit) changed(ns Namespace, action eventschema.ChangeAction, name string) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	if !same(self.namespaces[ns.Name()], ns) {
 		return
 	}
 	updated := ""
-	if action == eventschema.EventUpdate {
+	if action == eventschema.ChangeUpdate {
 		updated = name
 	}
 	self.sync(ns, updated)
@@ -372,22 +372,22 @@ func (self *Toolkit) sync(ns Namespace, updated string) {
 		switch {
 		case err != nil && existed:
 			self.unset(canonical)
-			self.publish(eventschema.EventDelete, canonical)
+			self.publish(eventschema.ChangeDelete, canonical)
 		case err != nil:
 		case existed:
 			self.set(canonical, entry)
 			if publish {
-				self.publish(eventschema.EventUpdate, canonical)
+				self.publish(eventschema.ChangeUpdate, canonical)
 			}
 		default:
 			self.set(canonical, entry)
-			self.publish(eventschema.EventCreate, canonical)
+			self.publish(eventschema.ChangeCreate, canonical)
 		}
 	}
 	for _, canonical := range slices.Sorted(maps.Keys(self.index[namespace])) {
 		if !seen[canonical] {
 			self.unset(canonical)
-			self.publish(eventschema.EventDelete, canonical)
+			self.publish(eventschema.ChangeDelete, canonical)
 		}
 	}
 }
@@ -419,9 +419,9 @@ func (self *Toolkit) unset(canonical string) {
 // publish publishes that the tool with the canonical name changed, when the
 // toolkit has a broadcaster. It never waits, so it's called under the lock,
 // so the events are in the order of the changes.
-func (self *Toolkit) publish(action eventschema.EventAction, canonical string) {
+func (self *Toolkit) publish(action eventschema.ChangeAction, canonical string) {
 	if self.broadcaster != nil {
-		self.broadcaster.Publish(eventschema.Event{Action: action, Schema: EventSchema, Table: ToolTable, Row: canonical})
+		self.broadcaster.Publish(eventschema.Change{Action: action, Schema: EventSchema, Table: ToolTable, Row: canonical})
 	}
 }
 
@@ -540,6 +540,6 @@ func (n namespace) Tools() []llm.Tool {
 func (namespace) Type() string { return schema.NamespaceBuiltin }
 
 // Watch sends the namespace's tools, which don't change
-func (n namespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (n namespace) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return WatchTools(ctx, ch, n.tools)
 }

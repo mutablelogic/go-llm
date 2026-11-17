@@ -17,9 +17,9 @@ import (
 	"testing"
 
 	// Packages
-	broadcasterhandler "github.com/mutablelogic/go-llm/broadcaster/httphandler"
 	registry "github.com/mutablelogic/go-llm/registry"
 	httphandler "github.com/mutablelogic/go-llm/registry/httphandler"
+	broadcasterhandler "github.com/mutablelogic/go-server/broadcaster/httphandler"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"

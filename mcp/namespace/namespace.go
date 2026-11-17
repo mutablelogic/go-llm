@@ -11,11 +11,11 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
 	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -173,7 +173,7 @@ func (ns *Namespace) PromptMessages(ctx context.Context, name string, input json
 // Watch sends the changes to the namespace's tools, as they're listed again,
 // or cleared, to the channel, until the context is cancelled, as
 // toolkit.Namespace says
-func (ns *Namespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (ns *Namespace) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return ns.watchers.Watch(ctx, ch, ns.Tools)
 }
 
@@ -377,7 +377,7 @@ func (ns *Namespace) replace(tools []*tool) {
 
 // change is a tool which was created, updated, or deleted
 type change struct {
-	action eventschema.EventAction
+	action eventschema.ChangeAction
 	name   string
 }
 
@@ -392,18 +392,18 @@ func diff(before, after []*tool) []change {
 	var result []change
 	for _, t := range after {
 		if prev, exists := old[t.Name()]; !exists {
-			result = append(result, change{eventschema.EventCreate, t.Name()})
+			result = append(result, change{eventschema.ChangeCreate, t.Name()})
 		} else if !sameTool(prev.t, t.t) || prev.client != t.client {
 			// It's another definition, or is called with another client,
 			// such as once the namespace is connected again, so its value
 			// is the new one
-			result = append(result, change{eventschema.EventUpdate, t.Name()})
+			result = append(result, change{eventschema.ChangeUpdate, t.Name()})
 		}
 		delete(old, t.Name())
 	}
 	for _, t := range before {
 		if _, exists := old[t.Name()]; exists {
-			result = append(result, change{eventschema.EventDelete, t.Name()})
+			result = append(result, change{eventschema.ChangeDelete, t.Name()})
 		}
 	}
 	return result
@@ -442,15 +442,15 @@ func diffPrompts(before, after []*prompt) []change {
 	var result []change
 	for _, p := range after {
 		if prev, exists := old[p.name]; !exists {
-			result = append(result, change{eventschema.EventCreate, p.name})
+			result = append(result, change{eventschema.ChangeCreate, p.name})
 		} else if !samePrompt(prev.p, p.p) {
-			result = append(result, change{eventschema.EventUpdate, p.name})
+			result = append(result, change{eventschema.ChangeUpdate, p.name})
 		}
 		delete(old, p.name)
 	}
 	for _, p := range before {
 		if _, exists := old[p.name]; exists {
-			result = append(result, change{eventschema.EventDelete, p.name})
+			result = append(result, change{eventschema.ChangeDelete, p.name})
 		}
 	}
 	return result

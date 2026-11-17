@@ -11,11 +11,11 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	memory "github.com/mutablelogic/go-llm/memory"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 	attribute "go.opentelemetry.io/otel/attribute"
@@ -83,9 +83,9 @@ func Test_Events(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 
 	b := broadcaster.New()
-	ch := make(chan eventschema.Event, 16)
+	ch := make(chan eventschema.Change, 16)
 	watchCtx, cancel := context.WithCancel(ctx)
-	done, err := b.Watch(watchCtx, ch)
+	done, err := b.Watch(watchCtx, eventschema.ChangeFilter{}, ch)
 	require.NoError(t, err)
 	defer func() {
 		cancel()
@@ -106,22 +106,22 @@ func Test_Events(t *testing.T) {
 	_, err = m.SetDetail(ctx, schema.FieldTimezone, &schema.Detail{Value: "Nowhere"})
 	require.Error(t, err)
 
-	var events []eventschema.Event
+	var events []eventschema.Change
 	for len(ch) > 0 {
 		events = append(events, <-ch)
 	}
-	event := func(action eventschema.EventAction, data string) eventschema.Event {
-		event := eventschema.Event{Action: action, Schema: "memory", Table: memory.DetailTable, Row: "location"}
+	event := func(action eventschema.ChangeAction, data string) eventschema.Change {
+		event := eventschema.Change{Action: action, Schema: "memory", Table: memory.DetailTable, Row: "location"}
 		if data != "" {
 			event.Data = json.RawMessage(data)
 		}
 		return event
 	}
-	assert.Equal(t, []eventschema.Event{
-		event(eventschema.EventCreate, `{"value":"Berlin"}`),
-		event(eventschema.EventUpdate, `{"value":"Paris"}`),
-		event(eventschema.EventUpdate, `{"declined":true}`),
-		event(eventschema.EventDelete, ""),
+	assert.Equal(t, []eventschema.Change{
+		event(eventschema.ChangeCreate, `{"value":"Berlin"}`),
+		event(eventschema.ChangeUpdate, `{"value":"Paris"}`),
+		event(eventschema.ChangeUpdate, `{"declined":true}`),
+		event(eventschema.ChangeDelete, ""),
 	}, events)
 }
 

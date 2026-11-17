@@ -17,9 +17,9 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -175,7 +175,7 @@ func (s *sessionStore) Delete(_ context.Context, id uuid.UUID, serial uint64) er
 
 // Watch sends no events, as only the server changes the sessions, until the
 // context is cancelled, when the returned channel is sent nil
-func (s *sessionStore) Watch(ctx context.Context, ch chan<- eventschema.Event) (<-chan error, error) {
+func (s *sessionStore) Watch(ctx context.Context, ch chan<- eventschema.Change) (<-chan error, error) {
 	if ch == nil {
 		return nil, llm.ErrBadParameter.With("missing channel")
 	}

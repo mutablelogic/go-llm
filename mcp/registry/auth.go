@@ -15,8 +15,8 @@ import (
 	goauth "github.com/mutablelogic/go-auth"
 	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	oauth2 "golang.org/x/oauth2"
 )
 
@@ -223,7 +223,7 @@ func (r *Registry) reconnect(connector schema.Connector) {
 	if exists {
 		_ = r.disconnect(connector.Name, e)
 	}
-	r.publish(eventschema.EventUpdate, connector)
+	r.publish(eventschema.ChangeUpdate, connector)
 }
 
 // tokenSource returns the source of the token of the connector's server,

@@ -49,7 +49,7 @@ Or chat in the web UI, with **Add conversation**. See [Conversations and Tasks](
 | Memory | `details`, `detail-set`, `detail-forget`, `memories`, `memory`, `memory-remember`, `memory-forget` |
 | Heartbeats | `heartbeats`, `heartbeat`, `heartbeat-create`, `heartbeat-update`, `heartbeat-delete` |
 | Resources | `resources`, `resource`, `resource-create`, `resource-get`, `resource-delete` |
-| Events | `events` |
+| Changes | `changes` |
 
 Run `llm <command> --help` for its flags. Model options are given with `--opt`, such as `--opt temperature=0.2`. These options control the agent loop rather than the model:
 

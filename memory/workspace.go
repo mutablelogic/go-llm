@@ -11,10 +11,10 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	yaml "go.yaml.in/yaml/v3"
 )
 
@@ -180,7 +180,7 @@ func (m *Memory) WatchResources(ctx context.Context, ch chan<- workspaceschema.C
 			return false
 		}
 	}
-	if !send(workspaceschema.Change{Action: eventschema.EventUpdate}) {
+	if !send(workspaceschema.Change{Action: eventschema.ChangeUpdate}) {
 		return nil
 	}
 	for {
@@ -231,7 +231,7 @@ func (w *watch) add(change workspaceschema.Change) {
 	switch {
 	case i < 0:
 		w.pending = append(w.pending, change)
-	case w.pending[i].Action == eventschema.EventCreate && change.Action == eventschema.EventUpdate:
+	case w.pending[i].Action == eventschema.ChangeCreate && change.Action == eventschema.ChangeUpdate:
 	default:
 		w.pending[i] = change
 	}

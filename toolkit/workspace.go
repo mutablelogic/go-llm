@@ -10,10 +10,10 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -174,7 +174,7 @@ func (*workspaceNamespace) SystemPrompt() string {
 	return "Workspaces have folders and resources, such as notes and files. List the workspaces, then a workspace's folders, and read a resource by its URI, as it's listed."
 }
 func (n *workspaceNamespace) Tools() []llm.Tool { return n.tools }
-func (n *workspaceNamespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (n *workspaceNamespace) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return WatchTools(ctx, ch, n.tools)
 }
 

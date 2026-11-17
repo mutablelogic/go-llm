@@ -12,13 +12,13 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	test "github.com/mutablelogic/go-llm/mcp/test"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -325,9 +325,9 @@ func Test_Displaced(t *testing.T) {
 	logger := slog.New(slog.DiscardHandler)
 	server := echoServer(t)
 	b := broadcaster.New()
-	ch := make(chan eventschema.Event, 16)
+	ch := make(chan eventschema.Change, 16)
 	watchCtx, cancel := context.WithCancel(ctx)
-	done, err := b.Watch(watchCtx, ch)
+	done, err := b.Watch(watchCtx, eventschema.ChangeFilter{}, ch)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		cancel()
@@ -357,7 +357,7 @@ func Test_Displaced(t *testing.T) {
 	assert.True(t, tk.HasNamespace("test"))
 	var deleted bool
 	for len(ch) > 0 {
-		if event := <-ch; event.Action == eventschema.EventDelete && event.Row == "test" {
+		if event := <-ch; event.Action == eventschema.ChangeDelete && event.Row == "test" {
 			deleted = true
 		}
 	}

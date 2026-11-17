@@ -17,10 +17,10 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
 	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 	trace "go.opentelemetry.io/otel/trace"
@@ -152,11 +152,11 @@ func (m *Memory) SetDetail(ctx context.Context, field schema.Field, detail *sche
 	// the changes, which doesn't wait
 	switch {
 	case before == nil:
-		m.publish(eventschema.EventCreate, field, after)
+		m.publish(eventschema.ChangeCreate, field, after)
 	case after == nil:
-		m.publish(eventschema.EventDelete, field, nil)
+		m.publish(eventschema.ChangeDelete, field, nil)
 	default:
-		m.publish(eventschema.EventUpdate, field, after)
+		m.publish(eventschema.ChangeUpdate, field, after)
 	}
 	return clone(details), nil
 }
@@ -231,9 +231,9 @@ func (m *Memory) Remember(ctx context.Context, meta schema.MemoryMeta, version s
 		return schema.Memory{}, false, err
 	}
 	if created {
-		m.publishMemory(eventschema.EventCreate, memory)
+		m.publishMemory(eventschema.ChangeCreate, memory)
 	} else {
-		m.publishMemory(eventschema.EventUpdate, memory)
+		m.publishMemory(eventschema.ChangeUpdate, memory)
 	}
 	return memory, created, nil
 }
@@ -254,7 +254,7 @@ func (m *Memory) Forget(ctx context.Context, key string) (_ schema.Memory, err e
 	} else if err := m.store.DeleteMemory(ctx, key); err != nil {
 		return schema.Memory{}, err
 	}
-	m.publishMemory(eventschema.EventDelete, memory)
+	m.publishMemory(eventschema.ChangeDelete, memory)
 	return memory, nil
 }
 
@@ -283,7 +283,7 @@ func (m *Memory) ForgetLine(ctx context.Context, key, line string) (_ schema.Mem
 		if err := m.store.DeleteMemory(ctx, key); err != nil {
 			return schema.Memory{}, err
 		}
-		m.publishMemory(eventschema.EventDelete, memory)
+		m.publishMemory(eventschema.ChangeDelete, memory)
 		return memory, nil
 	}
 	memory.Body, memory.Modified = body, m.now()
@@ -291,7 +291,7 @@ func (m *Memory) ForgetLine(ctx context.Context, key, line string) (_ schema.Mem
 	if err := m.store.PutMemory(ctx, memory); err != nil {
 		return schema.Memory{}, err
 	}
-	m.publishMemory(eventschema.EventUpdate, memory)
+	m.publishMemory(eventschema.ChangeUpdate, memory)
 	return memory, nil
 }
 
@@ -313,13 +313,13 @@ func (m *Memory) getMemory(ctx context.Context, key string) (schema.Memory, erro
 // publishMemory publishes the change to the memory, when the memory has a
 // broadcaster, whose row is its key, and whose data is its version, unless
 // it was deleted
-func (m *Memory) publishMemory(action eventschema.EventAction, memory schema.Memory) {
+func (m *Memory) publishMemory(action eventschema.ChangeAction, memory schema.Memory) {
 	m.notify(workspaceschema.Change{Action: action, URI: memoryURI(memory.Key)})
 	if m.broadcaster == nil {
 		return
 	}
-	event := eventschema.Event{Action: action, Schema: Name, Table: MemoryTable, Row: memory.Key}
-	if action != eventschema.EventDelete {
+	event := eventschema.Change{Action: action, Schema: Name, Table: MemoryTable, Row: memory.Key}
+	if action != eventschema.ChangeDelete {
 		if data, err := json.Marshal(schema.MemoryEvent{Version: memory.Version}); err == nil {
 			event.Data = data
 		}
@@ -329,12 +329,12 @@ func (m *Memory) publishMemory(action eventschema.EventAction, memory schema.Mem
 
 // publish publishes the change to the detail of the field, when the memory
 // has a broadcaster, with the detail, when there is one
-func (m *Memory) publish(action eventschema.EventAction, field schema.Field, detail *schema.Detail) {
-	m.notify(workspaceschema.Change{Action: eventschema.EventUpdate, URI: DetailsURI})
+func (m *Memory) publish(action eventschema.ChangeAction, field schema.Field, detail *schema.Detail) {
+	m.notify(workspaceschema.Change{Action: eventschema.ChangeUpdate, URI: DetailsURI})
 	if m.broadcaster == nil {
 		return
 	}
-	event := eventschema.Event{Action: action, Schema: Name, Table: DetailTable, Row: string(field)}
+	event := eventschema.Change{Action: action, Schema: Name, Table: DetailTable, Row: string(field)}
 	if detail != nil {
 		if data, err := json.Marshal(detail); err == nil {
 			event.Data = data

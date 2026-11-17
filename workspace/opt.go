@@ -3,7 +3,7 @@ package workspace
 import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
 	trace "go.opentelemetry.io/otel/trace"
 )
 

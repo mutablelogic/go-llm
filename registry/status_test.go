@@ -9,12 +9,12 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	test "github.com/mutablelogic/go-llm/registry/test"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -22,9 +22,9 @@ import (
 
 // sessionEvent returns the event of the session, with the data, when it
 // isn't nil
-func sessionEvent(t *testing.T, action eventschema.EventAction, id uuid.UUID, data *schema.SessionEvent) eventschema.Event {
+func sessionEvent(t *testing.T, action eventschema.ChangeAction, id uuid.UUID, data *schema.SessionEvent) eventschema.Change {
 	t.Helper()
-	event := eventschema.Event{Action: action, Schema: registry.EventSchema, Table: registry.SessionTable, Row: id.String()}
+	event := eventschema.Change{Action: action, Schema: registry.EventSchema, Table: registry.SessionTable, Row: id.String()}
 	if data != nil {
 		raw, err := json.Marshal(data)
 		require.NoError(t, err)
@@ -35,14 +35,14 @@ func sessionEvent(t *testing.T, action eventschema.EventAction, id uuid.UUID, da
 
 // nextEvent returns the next event of the channel, or fails when there's
 // none in time
-func nextEvent(t *testing.T, ch <-chan eventschema.Event) eventschema.Event {
+func nextEvent(t *testing.T, ch <-chan eventschema.Change) eventschema.Change {
 	t.Helper()
 	select {
 	case event := <-ch:
 		return event
 	case <-time.After(5 * time.Second):
 		t.Fatal("no event")
-		return eventschema.Event{}
+		return eventschema.Change{}
 	}
 }
 
@@ -83,13 +83,13 @@ func Test_SessionEvents(t *testing.T) {
 		require.NoError(t, err)
 		_, err = r.DeleteSession(ctx, session.ID)
 		require.NoError(t, err)
-		assert.Equal(t, []eventschema.Event{
-			sessionEvent(t, eventschema.EventCreate, session.ID, serial(1)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, serial(2)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionReplying)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, serial(3)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionIdle)),
-			sessionEvent(t, eventschema.EventDelete, session.ID, nil),
+		assert.Equal(t, []eventschema.Change{
+			sessionEvent(t, eventschema.ChangeCreate, session.ID, serial(1)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, serial(2)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionReplying)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, serial(3)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionIdle)),
+			sessionEvent(t, eventschema.ChangeDelete, session.ID, nil),
 		}, events(ch))
 	})
 
@@ -116,10 +116,10 @@ func Test_SessionEvents(t *testing.T) {
 		got, err := r.GetSession(ctx, session.ID)
 		require.NoError(t, err)
 		assert.Equal(t, schema.SessionTyping, got.Status, "typing, as it was set as the model replied")
-		assert.Equal(t, []eventschema.Event{
-			sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionReplying)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, serial(2)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionTyping)),
+		assert.Equal(t, []eventschema.Change{
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionReplying)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, serial(2)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionTyping)),
 		}, events(ch))
 	})
 
@@ -142,16 +142,16 @@ func Test_SessionEvents(t *testing.T) {
 		require.NoError(t, err)
 		_, err = r.SetSessionStatus(ctx, session.ID, schema.SessionIdle)
 		require.NoError(t, err)
-		assert.Equal(t, []eventschema.Event{
-			sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionTyping)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionIdle)),
+		assert.Equal(t, []eventschema.Change{
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionTyping)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionIdle)),
 		}, events(ch), "typing again isn't a change")
 
 		// It's idle after the timeout
 		_, err = r.SetSessionStatus(ctx, session.ID, schema.SessionTyping)
 		require.NoError(t, err)
-		assert.Equal(t, sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionTyping)), nextEvent(t, ch))
-		assert.Equal(t, sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionIdle)), nextEvent(t, ch))
+		assert.Equal(t, sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionTyping)), nextEvent(t, ch))
+		assert.Equal(t, sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionIdle)), nextEvent(t, ch))
 		got, err = r.GetSession(ctx, session.ID)
 		require.NoError(t, err)
 		assert.Equal(t, schema.SessionIdle, got.Status)
@@ -161,11 +161,11 @@ func Test_SessionEvents(t *testing.T) {
 		require.NoError(t, err)
 		_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Hi")}, nil)
 		require.NoError(t, err)
-		assert.Equal(t, []eventschema.Event{
-			sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionTyping)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionReplying)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, serial(2)),
-			sessionEvent(t, eventschema.EventUpdate, session.ID, status(schema.SessionIdle)),
+		assert.Equal(t, []eventschema.Change{
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionTyping)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionReplying)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, serial(2)),
+			sessionEvent(t, eventschema.ChangeUpdate, session.ID, status(schema.SessionIdle)),
 		}, events(ch))
 	})
 
@@ -197,7 +197,7 @@ func Test_SessionEvents(t *testing.T) {
 		_, err = r.DeleteSession(ctx, session.ID)
 		require.NoError(t, err)
 		time.Sleep(50 * time.Millisecond)
-		assert.Equal(t, []eventschema.Event{sessionEvent(t, eventschema.EventDelete, session.ID, nil)}, events(ch))
+		assert.Equal(t, []eventschema.Change{sessionEvent(t, eventschema.ChangeDelete, session.ID, nil)}, events(ch))
 	})
 
 	t.Run("Invalid", func(t *testing.T) {
@@ -224,7 +224,7 @@ func Test_SessionEvents(t *testing.T) {
 		runCtx, stop := context.WithCancel(ctx)
 		running := make(chan error, 1)
 		go func() { running <- r.Run(runCtx, nil) }()
-		event := sessionEvent(t, eventschema.EventUpdate, uuid.New(), serial(7))
+		event := sessionEvent(t, eventschema.ChangeUpdate, uuid.New(), serial(7))
 		require.Eventually(t, func() bool { return store.Changed(event) > 0 }, 5*time.Second, time.Millisecond)
 		assert.Equal(t, event, nextEvent(t, ch))
 		stop()
@@ -246,7 +246,7 @@ func Test_SessionEvents(t *testing.T) {
 		runCtx, stop := context.WithCancel(ctx)
 		running := make(chan error, 1)
 		go func() { running <- r.Run(runCtx, nil) }()
-		deleted := sessionEvent(t, eventschema.EventDelete, session.ID, nil)
+		deleted := sessionEvent(t, eventschema.ChangeDelete, session.ID, nil)
 		require.Eventually(t, func() bool { return store.Changed(deleted) > 0 }, 5*time.Second, time.Millisecond)
 		assert.Equal(t, deleted, nextEvent(t, ch))
 		time.Sleep(60 * time.Millisecond)

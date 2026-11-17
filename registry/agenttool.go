@@ -12,10 +12,10 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -119,7 +119,7 @@ func (n *agentNamespace) Tools() []llm.Tool {
 
 // Watch sends that an agent was created, updated or deleted, to the
 // channel, until the context is cancelled, as toolkit.Namespace says
-func (n *agentNamespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (n *agentNamespace) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return n.watchers.Watch(ctx, ch, n.Tools)
 }
 
@@ -142,9 +142,9 @@ func (n *agentNamespace) set(r *Registry, agent schema.Agent) {
 
 	// The watches are told without the lock, as they read the tools
 	if exists {
-		n.watchers.Changed(eventschema.EventUpdate, agent.Name)
+		n.watchers.Changed(eventschema.ChangeUpdate, agent.Name)
 	} else {
-		n.watchers.Changed(eventschema.EventCreate, agent.Name)
+		n.watchers.Changed(eventschema.ChangeCreate, agent.Name)
 	}
 }
 
@@ -155,7 +155,7 @@ func (n *agentNamespace) remove(name string) {
 	delete(n.tools, name)
 	n.mu.Unlock()
 	if exists {
-		n.watchers.Changed(eventschema.EventDelete, name)
+		n.watchers.Changed(eventschema.ChangeDelete, name)
 	}
 }
 

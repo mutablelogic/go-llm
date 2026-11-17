@@ -7,7 +7,7 @@ llm openapi
 ```
 
 - **Streaming:** operations such as ask, chat and transcribe send server-sent events, when `text/event-stream` is accepted.
-- **Events:** `GET /api/events` streams changes to providers, models, conversations, memory, tasks and connectors, which the web UI follows.
+- **Changes:** `GET /api/changes` streams changes to providers, models, conversations, memory, tasks, connectors and workspaces, which the web UI follows. See [Changes](changes.md).
 - **Errors** are JSON, with a `reason`, and say whether to try again, when a provider is busy, or refuses.
 
 ## By part
@@ -15,7 +15,7 @@ llm openapi
 Each part is documented beside its handlers:
 
 - [Registry](https://github.com/mutablelogic/go-llm/blob/main/registry/httphandler/README.md): providers, models, voices, conversations, agents, tasks' outcomes, and inference, such as ask, chat, embed, OCR, speak and transcribe.
-- [Events](https://github.com/mutablelogic/go-llm/blob/main/broadcaster/httphandler/README.md).
+- [Changes](changes.md), from [go-server's broadcaster](https://github.com/mutablelogic/go-server/blob/main/broadcaster/httphandler/README.md).
 - [Memory](https://github.com/mutablelogic/go-llm/blob/main/memory/httphandler/README.md).
 - [Tasks](https://github.com/mutablelogic/go-llm/blob/main/heartbeat/httphandler/README.md), as heartbeats.
 - [Resources](https://github.com/mutablelogic/go-llm/blob/main/resource/httphandler/README.md).

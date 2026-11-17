@@ -7,8 +7,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -50,7 +50,7 @@ const syncEventBuffer = 64
 // since they were seen, which are synced when they're next listed. When the
 // store's providers can't be listed, nothing is changed, and that's the
 // error.
-func (s *syncer) sync(ctx context.Context, registryEvents <-chan eventschema.Event) error {
+func (s *syncer) sync(ctx context.Context, registryEvents <-chan eventschema.Change) error {
 	var errs []error
 	failed := func(err error) {
 		if err != nil && !errors.Is(err, llm.ErrConflict) {

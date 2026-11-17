@@ -4,7 +4,6 @@ package main
 
 import (
 	// Packages
-	broadcastercmd "github.com/mutablelogic/go-llm/broadcaster/cmd"
 	heartbeatcmd "github.com/mutablelogic/go-llm/heartbeat/cmd"
 	mcpcmd "github.com/mutablelogic/go-llm/mcp/registry/cmd"
 	memorycmd "github.com/mutablelogic/go-llm/memory/cmd"
@@ -12,6 +11,7 @@ import (
 	resourcecmd "github.com/mutablelogic/go-llm/resource/cmd"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 	workspacecmd "github.com/mutablelogic/go-llm/workspace/cmd"
+	broadcastercmd "github.com/mutablelogic/go-server/broadcaster/cmd"
 )
 
 ///////////////////////////////////////////////////////////////////////////////

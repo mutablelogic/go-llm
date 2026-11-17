@@ -7,10 +7,10 @@ import (
 	// Packages
 	gofiler "github.com/mutablelogic/go-filer"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	server "github.com/mutablelogic/go-llm/mcp/server"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -85,6 +85,6 @@ func (n namespace) Description() string { return n.title }
 func (namespace) SystemPrompt() string  { return "" }
 func (namespace) Type() string          { return toolschema.NamespaceBuiltin }
 func (namespace) Tools() []llm.Tool     { return nil }
-func (namespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (namespace) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return toolkit.WatchTools(ctx, ch, nil)
 }

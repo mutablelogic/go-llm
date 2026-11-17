@@ -6,10 +6,10 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -45,7 +45,7 @@ func (ns *Namespace) WatchResources(ctx context.Context, ch chan<- schema.Change
 	if ch == nil {
 		return llm.ErrBadParameter.With("missing channel")
 	}
-	listAgain := schema.Change{Action: eventschema.EventUpdate}
+	listAgain := schema.Change{Action: eventschema.ChangeUpdate}
 	send := func(change schema.Change) bool {
 		select {
 		case ch <- change:
@@ -220,7 +220,7 @@ func (ns *Namespace) watchClient(ctx context.Context, c *client.Client, changed 
 				// said it's updated
 				continue
 			}
-			if !send(schema.Change{Action: eventschema.EventUpdate, URI: uri}) {
+			if !send(schema.Change{Action: eventschema.ChangeUpdate, URI: uri}) {
 				return false
 			}
 		case <-done:

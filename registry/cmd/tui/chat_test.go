@@ -17,10 +17,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	lipgloss "github.com/charmbracelet/lipgloss"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	memoryschema "github.com/mutablelogic/go-llm/memory/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -66,7 +66,7 @@ func (c fakeClient) SetSessionStatus(_ context.Context, id uuid.UUID, status sch
 	return &schema.Session{ID: id, Status: status}, nil
 }
 
-func (c fakeClient) WatchEvents(context.Context, func(eventschema.Event) error) error {
+func (c fakeClient) WatchChanges(context.Context, func(eventschema.Change) error) error {
 	return errors.New("not used")
 }
 
@@ -260,7 +260,7 @@ func sessionChange(t *testing.T, id uuid.UUID, data schema.SessionEvent) eventMs
 	t.Helper()
 	raw, err := json.Marshal(data)
 	require.NoError(t, err)
-	return eventMsg{Action: eventschema.EventUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String(), Data: raw}
+	return eventMsg{Action: eventschema.ChangeUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String(), Data: raw}
 }
 
 func Test_Changes(t *testing.T) {
@@ -333,7 +333,7 @@ func Test_Changes(t *testing.T) {
 	t.Run("Deleted", func(t *testing.T) {
 		id := uuid.New()
 		m, _ := newTestModel(fakeClient{}, &schema.Session{ID: id})
-		m.Update(eventMsg{Action: eventschema.EventDelete, Schema: eventSchema, Table: sessionTable, Row: id.String()})
+		m.Update(eventMsg{Action: eventschema.ChangeDelete, Schema: eventSchema, Table: sessionTable, Row: id.String()})
 		assert.Contains(t, m.history.View(), "the session was deleted")
 	})
 }
@@ -364,10 +364,10 @@ type flakyClient struct {
 	fakeClient
 	mu    sync.Mutex
 	fails int
-	event eventschema.Event
+	event eventschema.Change
 }
 
-func (c *flakyClient) WatchEvents(ctx context.Context, fn func(eventschema.Event) error) error {
+func (c *flakyClient) WatchChanges(ctx context.Context, fn func(eventschema.Change) error) error {
 	c.mu.Lock()
 	fail := c.fails > 0
 	c.fails--
@@ -389,7 +389,7 @@ func Test_Watch(t *testing.T) {
 	t.Cleanup(func() { watchRetry, watchRetryMax, watchSettled = retry, max, settled })
 
 	id := uuid.New()
-	event := eventschema.Event{Action: eventschema.EventUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String()}
+	event := eventschema.Change{Action: eventschema.ChangeUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String()}
 	client := &flakyClient{fails: 3, event: event}
 	ctx, cancel := context.WithCancel(context.Background())
 	events := make(chan tea.Msg, 16)
@@ -532,7 +532,7 @@ func Test_WatchFirst(t *testing.T) {
 	watchSettled = 10 * time.Millisecond
 	t.Cleanup(func() { watchSettled = settled })
 	id := uuid.New()
-	event := eventschema.Event{Action: eventschema.EventUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String()}
+	event := eventschema.Change{Action: eventschema.ChangeUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String()}
 	ctx, cancel := context.WithCancel(context.Background())
 	events := make(chan tea.Msg, 16)
 	watching := make(chan struct{})
@@ -603,8 +603,8 @@ func Test_Labels(t *testing.T) {
 			{MessageMeta: providerschema.MessageMeta{Sender: "assistant", Content: []providerschema.ContentBlock{{Text: types.Ptr("Hi")}}}},
 		}}
 	}
-	detail := func(action eventschema.EventAction, row, data string) detailMsg {
-		event := eventschema.Event{Action: action, Schema: memorySchema, Table: detailTable, Row: row}
+	detail := func(action eventschema.ChangeAction, row, data string) detailMsg {
+		event := eventschema.Change{Action: action, Schema: memorySchema, Table: detailTable, Row: row}
 		if data != "" {
 			event.Data = json.RawMessage(data)
 		}
@@ -631,17 +631,17 @@ func Test_Labels(t *testing.T) {
 		assert.Contains(t, view, "David")
 		assert.Contains(t, view, "Nano")
 
-		m.Update(detail(eventschema.EventUpdate, "assistant", `{"value":"Robin"}`))
+		m.Update(detail(eventschema.ChangeUpdate, "assistant", `{"value":"Robin"}`))
 		assert.Contains(t, m.history.View(), "Robin")
-		m.Update(detail(eventschema.EventDelete, "assistant", ""))
+		m.Update(detail(eventschema.ChangeDelete, "assistant", ""))
 		assert.Equal(t, "deepseek", m.assistantLabel())
 
 		// A declined name isn't used, and other details, or a memory which
 		// can't be loaded, change nothing
-		m.Update(detail(eventschema.EventUpdate, "name", `{"declined":true}`))
+		m.Update(detail(eventschema.ChangeUpdate, "name", `{"declined":true}`))
 		assert.Equal(t, "You", m.userLabel())
-		m.Update(detail(eventschema.EventCreate, "location", `{"value":"Berlin"}`))
-		m.Update(detail(eventschema.EventCreate, "unknown", `{"value":"x"}`))
+		m.Update(detail(eventschema.ChangeCreate, "location", `{"value":"Berlin"}`))
+		m.Update(detail(eventschema.ChangeCreate, "unknown", `{"value":"x"}`))
 		m.Update(detailsMsg{err: errors.New("no memory")})
 		assert.Equal(t, "You", m.userLabel())
 		assert.Equal(t, "Berlin", m.details.Location.Value)
@@ -657,7 +657,7 @@ func Test_StatusFollowsSession(t *testing.T) {
 	m, _ := newTestModel(fakeClient{stored: after}, before)
 	assert.Contains(t, m.status(), "eliza:eliza-1966-en")
 
-	cmd := m.changed(eventschema.Event{Action: eventschema.EventUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String(), Data: json.RawMessage(`{"serial":2}`)})
+	cmd := m.changed(eventschema.Change{Action: eventschema.ChangeUpdate, Schema: eventSchema, Table: sessionTable, Row: id.String(), Data: json.RawMessage(`{"serial":2}`)})
 	require.NotNil(t, cmd)
 	m.Update(cmd())
 	assert.Contains(t, m.status(), "deepseek:deepseek-chat")
@@ -735,7 +735,7 @@ func Test_DetailsReload(t *testing.T) {
 	fresh := &memoryschema.Details{Assistant: &memoryschema.Detail{Value: "Ada"}}
 	m, _ := newTestModel(fakeClient{details: fresh}, &schema.Session{ID: uuid.New()})
 	load := m.loadDetails()
-	m.Update(detailMsg(eventschema.Event{Action: eventschema.EventUpdate, Schema: memorySchema, Table: detailTable, Row: "assistant", Data: json.RawMessage(`{"value":"Ada"}`)}))
+	m.Update(detailMsg(eventschema.Change{Action: eventschema.ChangeUpdate, Schema: memorySchema, Table: detailTable, Row: "assistant", Data: json.RawMessage(`{"value":"Ada"}`)}))
 	msg := load().(detailsMsg)
 	msg.details = stale
 	_, cmd := m.Update(msg)

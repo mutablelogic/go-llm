@@ -12,10 +12,10 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/messaging/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
 
@@ -134,7 +134,7 @@ func (m *Messaging) SessionPrompt(ctx context.Context, session uuid.UUID) string
 func (*Messaging) Type() string { return toolschema.NamespaceBuiltin }
 
 // Watch sends the namespace's tools, which don't change
-func (ns *Messaging) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (ns *Messaging) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return toolkit.WatchTools(ctx, ch, ns.Tools())
 }
 

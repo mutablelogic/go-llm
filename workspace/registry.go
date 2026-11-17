@@ -15,8 +15,8 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -128,7 +128,7 @@ func (r *Registry) Add(name string, ws Workspace) error {
 		case <-time.After(WatchTimeout):
 		}
 	}
-	r.publish(eventschema.EventCreate, WorkspaceTable, name, nil)
+	r.publish(eventschema.ChangeCreate, WorkspaceTable, name, nil)
 	return nil
 }
 
@@ -165,7 +165,7 @@ func (r *Registry) remove(name string) {
 		w.cancel()
 		delete(r.watches, name)
 	}
-	r.publish(eventschema.EventDelete, WorkspaceTable, name, nil)
+	r.publish(eventschema.ChangeDelete, WorkspaceTable, name, nil)
 }
 
 // With calls the function with the workspace with the name, and returns its
@@ -337,9 +337,9 @@ func (r *Registry) watch(ctx context.Context, name string, w *watch, watcher Wat
 }
 
 // publish publishes the change, when there's a broadcaster
-func (r *Registry) publish(action eventschema.EventAction, table, row string, data json.RawMessage) {
+func (r *Registry) publish(action eventschema.ChangeAction, table, row string, data json.RawMessage) {
 	if r.broadcaster != nil {
-		r.broadcaster.Publish(eventschema.Event{Action: action, Schema: EventSchema, Table: table, Row: row, Data: data})
+		r.broadcaster.Publish(eventschema.Change{Action: action, Schema: EventSchema, Table: table, Row: row, Data: data})
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -35,8 +35,8 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 
 	// Log the registry's events, until it's cancelled, or the broadcaster
 	// stops
-	ch := make(chan eventschema.Event, 16)
-	done, err := r.broadcaster.Watch(ctx, ch)
+	ch := make(chan eventschema.Change, 16)
+	done, err := r.broadcaster.Watch(ctx, eventschema.ChangeFilter{Schema: EventSchema}, ch)
 	if err != nil {
 		return err
 	}
@@ -66,13 +66,13 @@ func (r *Registry) Running() bool {
 
 // log logs the registry's event: a workspace which is added, or removed, or
 // a folder, or resource, of one, which changes
-func (r *Registry) log(ctx context.Context, logger *slog.Logger, event eventschema.Event) {
+func (r *Registry) log(ctx context.Context, logger *slog.Logger, event eventschema.Change) {
 	switch event.Table {
 	case WorkspaceTable:
 		switch event.Action {
-		case eventschema.EventCreate:
+		case eventschema.ChangeCreate:
 			logger.InfoContext(ctx, "workspace added", "workspace", event.Row)
-		case eventschema.EventDelete:
+		case eventschema.ChangeDelete:
 			logger.InfoContext(ctx, "workspace removed", "workspace", event.Row)
 		}
 	case ResourceTable:

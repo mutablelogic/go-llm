@@ -14,9 +14,9 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -169,7 +169,7 @@ func (r *Registry) addMarker(ctx context.Context, id uuid.UUID, marker providers
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
 		return schema.Session{}, uuid.Nil(), err
 	}
-	r.sessionChanged(eventschema.EventUpdate, session)
+	r.sessionChanged(eventschema.ChangeUpdate, session)
 	return session, uuid.Nil(), nil
 }
 
@@ -329,7 +329,7 @@ func (r *Registry) updateMarker(ctx context.Context, id, markerID uuid.UUID, fn 
 			if session, err = r.sessionStore.Put(ctx, session); err != nil {
 				return err
 			}
-			r.sessionChanged(eventschema.EventUpdate, session)
+			r.sessionChanged(eventschema.ChangeUpdate, session)
 			return nil
 		}()
 		if !errors.Is(err, llm.ErrConflict) || attempt >= markerRetries {

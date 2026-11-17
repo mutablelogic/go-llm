@@ -12,7 +12,6 @@ import (
 	// Packages
 	"errors"
 	llm "github.com/mutablelogic/go-llm"
-	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -37,6 +36,9 @@ type workspaceName struct {
 //go:embed README.md
 var readme []byte
 
+// Tag is the OpenAPI tag of the workspaces' handlers
+const Tag = "Workspaces"
+
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
@@ -44,8 +46,8 @@ var readme []byte
 // resources, with the "Workspaces" tag, in the "LLM" group
 func RegisterHandlers(workspaces *workspace.Registry, router *httprouter.Router) error {
 	documentation := openapi.ParseMarkdown(readme)
-	router.Spec().AddTag(taggroup.Workspaces, documentation.Section(2, "Workspace Operations").Body)
-	taggroup.Add(router.Spec(), taggroup.LLM, taggroup.Workspaces)
+	router.Spec().AddTag(Tag, documentation.Section(2, "Workspace Operations").Body)
+	router.Spec().AddTagGroup(llm.TagGroup, Tag)
 	return errors.Join(
 		workspaceListHandlers(workspaces, router, documentation),
 		workspaceGetHandlers(workspaces, router, documentation),
@@ -59,7 +61,7 @@ func RegisterHandlers(workspaces *workspace.Registry, router *httprouter.Router)
 
 func workspaceListHandlers(workspaces *workspace.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/workspace", nil, func(path httprequest.PathItem) {
-		path.Tag(taggroup.Workspaces)
+		path.Tag(Tag)
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
 			httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), workspaces.ListWorkspaces(r.Context()))
 		}, func(op httprequest.PathOperation) {
@@ -72,7 +74,7 @@ func workspaceListHandlers(workspaces *workspace.Registry, router *httprouter.Ro
 
 func workspaceGetHandlers(workspaces *workspace.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/workspace/{name}", jsonschema.MustFor[workspaceName](), func(path httprequest.PathItem) {
-		path.Tag(taggroup.Workspaces)
+		path.Tag(Tag)
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
 			name := r.PathValue("name")
 			if ws, err := workspaces.GetWorkspace(r.Context(), name); err != nil {
@@ -91,7 +93,7 @@ func workspaceGetHandlers(workspaces *workspace.Registry, router *httprouter.Rou
 
 func resourceListHandlers(workspaces *workspace.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/workspace/{name}/resource", jsonschema.MustFor[workspaceName](), func(path httprequest.PathItem) {
-		path.Tag(taggroup.Workspaces)
+		path.Tag(Tag)
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
 			var req schema.ListRequest
 			name := r.PathValue("name")
@@ -115,7 +117,7 @@ func resourceListHandlers(workspaces *workspace.Registry, router *httprouter.Rou
 
 func contentHandlers(workspaces *workspace.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/workspace/{name}/content", jsonschema.MustFor[workspaceName](), func(path httprequest.PathItem) {
-		path.Tag(taggroup.Workspaces)
+		path.Tag(Tag)
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
 			var req schema.ReadRequest
 			name := r.PathValue("name")

@@ -9,12 +9,12 @@ import (
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	test "github.com/mutablelogic/go-llm/mcp/test"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	workspace "github.com/mutablelogic/go-llm/workspace"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -211,13 +211,13 @@ func Test_Refresh(t *testing.T) {
 
 // watcher is a watch of a namespace's tools, as "<action> <name>"
 type watcher struct {
-	ch chan eventschema.Event
+	ch chan eventschema.Change
 }
 
 // watch watches the namespace, until the test ends
 func watch(t *testing.T, ns *namespace.Namespace) *watcher {
 	t.Helper()
-	w := &watcher{ch: make(chan eventschema.Event, 16)}
+	w := &watcher{ch: make(chan eventschema.Change, 16)}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- ns.Watch(ctx, w.ch) }()

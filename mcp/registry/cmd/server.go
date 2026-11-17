@@ -8,10 +8,10 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	httphandler "github.com/mutablelogic/go-llm/mcp/registry/httphandler"
 	server "github.com/mutablelogic/go-server"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 )

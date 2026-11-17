@@ -8,12 +8,12 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -27,12 +27,13 @@ func (notes) Description() string  { return "My notes" }
 func (notes) SystemPrompt() string { return "" }
 func (notes) Type() string         { return schema.NamespaceBuiltin }
 func (notes) Tools() []llm.Tool    { return nil }
-func (notes) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (notes) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return toolkit.WatchTools(ctx, ch, nil)
 }
 func (notes) List(context.Context, workspaceschema.ListRequest) (*workspaceschema.ListResponse, error) {
 	return &workspaceschema.ListResponse{Body: []workspaceschema.ResourceMeta{{URI: "file:///note.md", Name: "note.md", Type: "text/markdown"}}}, nil
 }
+
 // unsized is a resource whose size isn't known
 type unsized struct{ data []byte }
 

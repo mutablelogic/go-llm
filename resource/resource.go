@@ -23,9 +23,9 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/resource/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 	trace "go.opentelemetry.io/otel/trace"
@@ -153,7 +153,7 @@ func (r *Manager) Create(ctx context.Context, meta schema.ResourceMeta, content 
 	now := r.now().UTC()
 	created := schema.Resource{Hash: hash, Size: size, Created: now, Used: now, ResourceMeta: meta}
 	if err := r.store.Create(ctx, created); err == nil {
-		r.publish(eventschema.EventCreate, created)
+		r.publish(eventschema.ChangeCreate, created)
 		return created, true, nil
 	} else if !errors.Is(err, llm.ErrConflict) {
 		return schema.Resource{}, false, err
@@ -176,7 +176,7 @@ func (r *Manager) Create(ctx context.Context, meta schema.ResourceMeta, content 
 	if err != nil {
 		return schema.Resource{}, false, err
 	}
-	r.publish(eventschema.EventUpdate, updated)
+	r.publish(eventschema.ChangeUpdate, updated)
 	return updated, false, nil
 }
 
@@ -341,7 +341,7 @@ func (r *Manager) link(ctx context.Context, uri string, from *uuid.UUID, session
 	} else if err != nil {
 		return schema.Resource{}, err
 	}
-	r.publish(eventschema.EventCreate, linked)
+	r.publish(eventschema.ChangeCreate, linked)
 	return linked, nil
 }
 
@@ -359,7 +359,7 @@ func (r *Manager) Delete(ctx context.Context, key schema.ResourceKey) (_ schema.
 	if err != nil {
 		return schema.Resource{}, err
 	}
-	r.publish(eventschema.EventDelete, deleted)
+	r.publish(eventschema.ChangeDelete, deleted)
 
 	return deleted, nil
 }
@@ -461,7 +461,7 @@ func (r *Manager) sessionExists(ctx context.Context, session *uuid.UUID) error {
 }
 
 // publish publishes the change of the resource, with its session
-func (r *Manager) publish(action eventschema.EventAction, resource schema.Resource) {
+func (r *Manager) publish(action eventschema.ChangeAction, resource schema.Resource) {
 	if r.broadcaster == nil {
 		return
 	}
@@ -470,7 +470,7 @@ func (r *Manager) publish(action eventschema.EventAction, resource schema.Resour
 		event.Session = resource.Session.String()
 	}
 	data, _ := json.Marshal(event)
-	r.broadcaster.Publish(eventschema.Event{Action: action, Schema: schema.Name, Table: schema.ResourceTable, Row: resource.Hash, Data: data})
+	r.broadcaster.Publish(eventschema.Change{Action: action, Schema: schema.Name, Table: schema.ResourceTable, Row: resource.Hash, Data: data})
 }
 
 ///////////////////////////////////////////////////////////////////////////////

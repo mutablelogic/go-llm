@@ -8,7 +8,7 @@ import (
 	"net/url"
 
 	// Packages
-	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
+	llm "github.com/mutablelogic/go-llm"
 	registry "github.com/mutablelogic/go-llm/mcp/registry"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi"
@@ -54,7 +54,7 @@ func RegisterHandlers(r *registry.Registry, router *httprouter.Router, opts ...O
 	}
 	documentation := openapi.ParseMarkdown(readme)
 	router.Spec().AddTag(Tag, documentation.Section(2, "Connector Operations").Body)
-	taggroup.Add(router.Spec(), taggroup.LLM, Tag)
+	router.Spec().AddTagGroup(llm.TagGroup, Tag)
 	return errors.Join(
 		connectorCreateListHandlers(r, router, documentation),
 		connectorHandlers(r, router, documentation),

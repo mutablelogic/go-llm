@@ -13,9 +13,9 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -62,7 +62,7 @@ type SessionStore interface {
 	// returns a channel which is sent nil, or an error when the store stops,
 	// once the watch has ended. A store which isn't changed by others, such
 	// as files which only its server writes, sends no events.
-	Watch(context.Context, chan<- eventschema.Event) (<-chan error, error)
+	Watch(context.Context, chan<- eventschema.Change) (<-chan error, error)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -102,7 +102,7 @@ func (r *Registry) CreateSession(ctx context.Context, meta schema.SessionMeta) (
 	if err != nil {
 		return nil, err
 	}
-	r.sessionChanged(eventschema.EventCreate, session)
+	r.sessionChanged(eventschema.ChangeCreate, session)
 	return r.withoutMessages(session), nil
 }
 
@@ -243,7 +243,7 @@ func (r *Registry) UpdateSession(ctx context.Context, id uuid.UUID, meta schema.
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
 		return nil, err
 	}
-	r.sessionChanged(eventschema.EventUpdate, session)
+	r.sessionChanged(eventschema.ChangeUpdate, session)
 	return r.withoutMessages(session), nil
 }
 
@@ -288,7 +288,7 @@ func (r *Registry) deleteSession(ctx context.Context, id uuid.UUID, serial *uint
 	}
 	result := r.withoutMessages(session)
 	r.forgetStatus(id)
-	r.sessionChanged(eventschema.EventDelete, session)
+	r.sessionChanged(eventschema.ChangeDelete, session)
 	return result, nil
 }
 
@@ -318,7 +318,7 @@ func (r *Registry) ForgetSessionMessages(ctx context.Context, id uuid.UUID) (_ *
 	if session, err = r.sessionStore.Put(ctx, session); err != nil {
 		return nil, err
 	}
-	r.sessionChanged(eventschema.EventUpdate, session)
+	r.sessionChanged(eventschema.ChangeUpdate, session)
 	return r.withoutMessages(session), nil
 }
 
@@ -398,7 +398,7 @@ func (r *Registry) Chat(ctx context.Context, id uuid.UUID, messages []llm.Messag
 		return nil, err
 	}
 	session = stored
-	r.sessionChanged(eventschema.EventUpdate, session)
+	r.sessionChanged(eventschema.ChangeUpdate, session)
 
 	// The reply, which is the last message, when it's the model's
 	if r.replies != nil && len(response.Messages) > 0 {

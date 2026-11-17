@@ -6,7 +6,7 @@ import (
 	"errors"
 
 	// Packages
-	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
+	llm "github.com/mutablelogic/go-llm"
 	registry "github.com/mutablelogic/go-llm/registry"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
 	openapi "github.com/mutablelogic/go-server/pkg/openapi"
@@ -35,10 +35,10 @@ func RegisterHandlers(r *registry.Registry, router *httprouter.Router) error {
 	}
 	tags = append(tags, "Inference")
 	if r.Toolkit() != nil || r.AgentStore() != nil {
-		tags = append(tags, taggroup.ToolsAndAgents)
+		tags = append(tags, llm.ToolsAndAgentsTag)
 	}
 	tags = append(tags, "Events")
-	taggroup.Add(router.Spec(), taggroup.LLM, tags...)
+	router.Spec().AddTagGroup(llm.TagGroup, tags...)
 
 	// The handlers
 	handlers := []error{

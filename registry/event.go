@@ -12,9 +12,9 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
@@ -127,7 +127,7 @@ func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 	if stored, err = r.sessionStore.Put(ctx, stored); err != nil {
 		return nil, err
 	}
-	r.sessionChanged(eventschema.EventUpdate, stored)
+	r.sessionChanged(eventschema.ChangeUpdate, stored)
 	session = r.withoutMessages(stored)
 
 	// Its outcome, which is the agent's message, and how important it is, is
@@ -282,7 +282,7 @@ func (r *Registry) eventSession(ctx context.Context, id uuid.UUID, req schema.Ru
 		if errors.Is(err, llm.ErrConflict) {
 			session, err = r.sessionStore.Get(ctx, id)
 		} else if err == nil {
-			r.sessionChanged(eventschema.EventCreate, created)
+			r.sessionChanged(eventschema.ChangeCreate, created)
 			return r.withoutMessages(created), parent, nil
 		}
 		if err != nil {

@@ -18,9 +18,9 @@ import (
 	gofiler "github.com/mutablelogic/go-filer"
 	filerschema "github.com/mutablelogic/go-filer/filer/schema"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -181,7 +181,7 @@ func (w *Workspace) WatchResources(ctx context.Context, ch chan<- schema.Change)
 		case <-ctx.Done():
 		}
 	}
-	listAgain := schema.Change{Action: eventschema.EventUpdate}
+	listAgain := schema.Change{Action: eventschema.ChangeUpdate}
 
 	// The backend's events, which are sent as changes, as they're watched
 	events := make(chan filerschema.Event, 16)
@@ -239,20 +239,20 @@ func (w *Workspace) changeOf(ctx context.Context, event filerschema.Event) (sche
 	case filerschema.EventTypeCreated, filerschema.EventTypeUpdated:
 		obj, err := w.filer.GetObject(ctx, filerschema.GetObjectRequest{ObjectKey: event.ObjectKey})
 		if err != nil {
-			return schema.Change{Action: eventschema.EventUpdate}, true
+			return schema.Change{Action: eventschema.ChangeUpdate}, true
 		} else if obj.IsDir {
 			w.folders.Store(p, true)
 		}
-		action := eventschema.EventCreate
+		action := eventschema.ChangeCreate
 		if event.EventType == filerschema.EventTypeUpdated {
-			action = eventschema.EventUpdate
+			action = eventschema.ChangeUpdate
 		}
 		return schema.Change{Action: action, URI: uriOf(p, obj.IsDir)}, true
 	case filerschema.EventTypeDeleted:
 		_, folder := w.folders.LoadAndDelete(p)
-		return schema.Change{Action: eventschema.EventDelete, URI: uriOf(p, folder)}, true
+		return schema.Change{Action: eventschema.ChangeDelete, URI: uriOf(p, folder)}, true
 	case filerschema.EventTypeRescan:
-		return schema.Change{Action: eventschema.EventUpdate}, true
+		return schema.Change{Action: eventschema.ChangeUpdate}, true
 	}
 	return schema.Change{}, false
 }

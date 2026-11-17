@@ -10,7 +10,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
 	memory "github.com/mutablelogic/go-llm/memory"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -46,7 +45,7 @@ const Tag = "Memory"
 func RegisterHandlers(m *memory.Memory, router *httprouter.Router) error {
 	documentation := openapi.ParseMarkdown(readme)
 	router.Spec().AddTag(Tag, documentation.Section(2, "Detail Operations").Body+"\n\n"+documentation.Section(2, "Memory Operations").Body)
-	taggroup.Add(router.Spec(), taggroup.LLM, Tag)
+	router.Spec().AddTagGroup(llm.TagGroup, Tag)
 	return errors.Join(
 		detailsHandlers(m, router, documentation),
 		detailHandlers(m, router, documentation),

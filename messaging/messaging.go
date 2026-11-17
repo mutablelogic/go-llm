@@ -22,10 +22,10 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/messaging/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	attribute "go.opentelemetry.io/otel/attribute"
 	trace "go.opentelemetry.io/otel/trace"
 )
@@ -383,12 +383,12 @@ func (m *Messaging) Run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	// Disconnect the channels of the sessions which are deleted
-	var events chan eventschema.Event
+	var events chan eventschema.Change
 	var done <-chan error
 	if m.broadcaster != nil {
-		events = make(chan eventschema.Event, 256)
+		events = make(chan eventschema.Change, 256)
 		var err error
-		if done, err = m.broadcaster.Watch(ctx, events); err != nil {
+		if done, err = m.broadcaster.Watch(ctx, eventschema.ChangeFilter{Schema: registry.EventSchema, Table: registry.SessionTable, Action: eventschema.ChangeDelete}, events); err != nil {
 			logger.WarnContext(ctx, "channels of deleted sessions won't be disconnected", "error", err.Error())
 			events, done = nil, nil
 		}
@@ -400,7 +400,7 @@ func (m *Messaging) Run(ctx context.Context, logger *slog.Logger) error {
 		case <-done:
 			events, done = nil, nil
 		case event := <-events:
-			if event.Schema != registry.EventSchema || event.Table != registry.SessionTable || event.Action != eventschema.EventDelete {
+			if event.Schema != registry.EventSchema || event.Table != registry.SessionTable || event.Action != eventschema.ChangeDelete {
 				continue
 			}
 			if session, err := uuid.Parse(event.Row); err == nil {

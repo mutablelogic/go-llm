@@ -4,8 +4,8 @@ import (
 	"context"
 
 	// Packages
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -39,5 +39,5 @@ type ProviderStore interface {
 	// channel which is sent nil, or an error when the store stops, once the
 	// watch has ended. A store which isn't changed by others, such as a
 	// file, sends no events, as its providers are listed periodically.
-	Watch(context.Context, chan<- eventschema.Event) (<-chan error, error)
+	Watch(context.Context, chan<- eventschema.Change) (<-chan error, error)
 }

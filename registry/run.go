@@ -9,8 +9,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -59,15 +59,15 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	// synced, so no change is missed, and sync them. Without one, the
 	// channels are nil, so they're never received from.
 	var s *syncer
-	var registryEvents, storeEvents chan eventschema.Event
+	var registryEvents, storeEvents chan eventschema.Change
 	var storeDone <-chan error
 	if r.providerStore != nil {
 		s = &syncer{registry: r, store: r.providerStore, known: make(map[string]schema.Provider)}
-		registryEvents = make(chan eventschema.Event, syncEventBuffer)
-		if _, err := r.Watch(ctx, registryEvents); err != nil {
+		registryEvents = make(chan eventschema.Change, syncEventBuffer)
+		if _, err := r.Watch(ctx, eventschema.ChangeFilter{Schema: EventSchema, Table: ProviderTable}, registryEvents); err != nil {
 			return err
 		}
-		storeEvents = make(chan eventschema.Event, syncEventBuffer)
+		storeEvents = make(chan eventschema.Change, syncEventBuffer)
 		done, err := r.providerStore.Watch(ctx, storeEvents)
 		if err != nil {
 			return err
@@ -84,10 +84,10 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	}
 
 	// With a store of sessions, publish the changes others make to them
-	var sessionEvents chan eventschema.Event
+	var sessionEvents chan eventschema.Change
 	var sessionDone <-chan error
 	if r.sessionStore != nil {
-		sessionEvents = make(chan eventschema.Event, syncEventBuffer)
+		sessionEvents = make(chan eventschema.Change, syncEventBuffer)
 		done, err := r.sessionStore.Watch(ctx, sessionEvents)
 		if err != nil {
 			return err
@@ -142,7 +142,7 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 			// either, so it's not published as idle after it. As with
 			// DeleteSession, the lifecycle lock is held, so a status isn't
 			// set as, or after, it's deleted.
-			if event.Action == eventschema.EventDelete {
+			if event.Action == eventschema.ChangeDelete {
 				r.lifecycle.Lock()
 				if id, err := uuid.Parse(event.Row); err == nil {
 					r.forgetStatus(id)

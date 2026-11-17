@@ -10,5 +10,6 @@
 * [Tools and Agents](tools-and-agents.md)
 * [Messaging](messaging.md)
 * [API](api.md)
+  * [Changes](changes.md)
 * [Development](development.md)
 * [Feedback & Issues](feedback-and-issues.md)

@@ -14,11 +14,11 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -141,7 +141,7 @@ type changing struct {
 func (c changing) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
 	// It's watching, which is said first
 	select {
-	case ch <- schema.Change{Action: eventschema.EventUpdate}:
+	case ch <- schema.Change{Action: eventschema.ChangeUpdate}:
 	case <-ctx.Done():
 		return nil
 	}
@@ -164,37 +164,37 @@ func Test_Events(t *testing.T) {
 	// changes, are published
 	ctx := context.Background()
 	b := broadcaster.New()
-	events := make(chan eventschema.Event, 16)
+	events := make(chan eventschema.Change, 16)
 	watchCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	_, err := b.Watch(watchCtx, events)
+	_, err := b.Watch(watchCtx, eventschema.ChangeFilter{}, events)
 	require.NoError(t, err)
 	r, err := workspace.New(workspace.WithBroadcaster(b))
 	require.NoError(t, err)
 	defer r.Close()
-	next := func() eventschema.Event {
+	next := func() eventschema.Change {
 		t.Helper()
 		select {
 		case event := <-events:
 			return event
 		case <-time.After(5 * time.Second):
 			t.Fatal("no event")
-			return eventschema.Event{}
+			return eventschema.Change{}
 		}
 	}
 
 	ws := changing{changes: make(chan schema.Change)}
 	require.NoError(t, r.Add("notes", ws))
-	assert.Equal(t, eventschema.Event{Action: eventschema.EventCreate, Schema: workspace.EventSchema, Table: workspace.WorkspaceTable, Row: "notes"}, next())
+	assert.Equal(t, eventschema.Change{Action: eventschema.ChangeCreate, Schema: workspace.EventSchema, Table: workspace.WorkspaceTable, Row: "notes"}, next())
 
-	ws.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}
-	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{"uri":"resource://notes/file:///a.md"}`)}, next(), "with the workspace's URI")
-	ws.changes <- schema.Change{Action: eventschema.EventUpdate}
-	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{}`)}, next())
+	ws.changes <- schema.Change{Action: eventschema.ChangeUpdate, URI: "file:///a.md"}
+	assert.Equal(t, eventschema.Change{Action: eventschema.ChangeUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{"uri":"resource://notes/file:///a.md"}`)}, next(), "with the workspace's URI")
+	ws.changes <- schema.Change{Action: eventschema.ChangeUpdate}
+	assert.Equal(t, eventschema.Change{Action: eventschema.ChangeUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{}`)}, next())
 
 	_, err = r.Remove("notes")
 	require.NoError(t, err)
-	assert.Equal(t, eventschema.Event{Action: eventschema.EventDelete, Schema: workspace.EventSchema, Table: workspace.WorkspaceTable, Row: "notes"}, next())
+	assert.Equal(t, eventschema.Change{Action: eventschema.ChangeDelete, Schema: workspace.EventSchema, Table: workspace.WorkspaceTable, Row: "notes"}, next())
 
 	_, err = workspace.New(workspace.WithBroadcaster(nil))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
@@ -215,10 +215,10 @@ func Test_EventsReady(t *testing.T) {
 	// Once Add returns, the workspace is watched, so a change it says then
 	// is published, and one it said before its watch ended is, too
 	b := broadcaster.New()
-	events := make(chan eventschema.Event, 16)
+	events := make(chan eventschema.Change, 16)
 	watchCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	_, err := b.Watch(watchCtx, events)
+	_, err := b.Watch(watchCtx, eventschema.ChangeFilter{}, events)
 	require.NoError(t, err)
 	r, err := workspace.New(workspace.WithBroadcaster(b))
 	require.NoError(t, err)
@@ -226,7 +226,7 @@ func Test_EventsReady(t *testing.T) {
 	ws := ending{changes: make(chan schema.Change, 1)}
 	require.NoError(t, r.Add("notes", ws))
 	assert.Equal(t, workspace.WorkspaceTable, (<-events).Table)
-	ws.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}
+	ws.changes <- schema.Change{Action: eventschema.ChangeUpdate, URI: "file:///a.md"}
 	select {
 	case event := <-events:
 		assert.Equal(t, workspace.ResourceTable, event.Table)
@@ -244,7 +244,7 @@ type ending struct {
 }
 
 func (e ending) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
-	ch <- schema.Change{Action: eventschema.EventUpdate}
+	ch <- schema.Change{Action: eventschema.ChangeUpdate}
 	select {
 	case change := <-e.changes:
 		ch <- change
@@ -375,7 +375,7 @@ func Test_Watched(t *testing.T) {
 	assert.True(t, r.ListWorkspaces(context.Background()).Body[0].Watch)
 	ending := ending{changes: make(chan schema.Change, 1)}
 	require.NoError(t, r.Add("ending", ending))
-	ending.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}
+	ending.changes <- schema.Change{Action: eventschema.ChangeUpdate, URI: "file:///a.md"}
 	require.Eventually(t, func() bool { return !watched(r, "ending") }, 5*time.Second, time.Millisecond)
 	assert.True(t, watched(r, "notes"))
 	require.NoError(t, r.Close())

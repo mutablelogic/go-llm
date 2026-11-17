@@ -18,9 +18,9 @@ import (
 	// Packages
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/heartbeat/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 	trace "go.opentelemetry.io/otel/trace"
@@ -127,7 +127,7 @@ func (h *Heartbeats) Create(ctx context.Context, meta schema.HeartbeatMeta) (_ s
 	if err := h.store.Create(ctx, heartbeat); err != nil {
 		return schema.Heartbeat{}, err
 	}
-	h.publish(eventschema.EventCreate, heartbeat)
+	h.publish(eventschema.ChangeCreate, heartbeat)
 	return h.withNext(heartbeat), nil
 }
 
@@ -203,7 +203,7 @@ func (h *Heartbeats) Update(ctx context.Context, id uuid.UUID, req schema.Heartb
 	if err != nil {
 		return schema.Heartbeat{}, err
 	}
-	h.publish(eventschema.EventUpdate, heartbeat)
+	h.publish(eventschema.ChangeUpdate, heartbeat)
 	return h.withNext(heartbeat), nil
 }
 
@@ -219,7 +219,7 @@ func (h *Heartbeats) Delete(ctx context.Context, id uuid.UUID) (_ schema.Heartbe
 	if err != nil {
 		return schema.Heartbeat{}, err
 	}
-	h.publish(eventschema.EventDelete, heartbeat)
+	h.publish(eventschema.ChangeDelete, heartbeat)
 	return heartbeat, nil
 }
 
@@ -253,7 +253,7 @@ func (h *Heartbeats) DeleteSession(ctx context.Context, session uuid.UUID) (_ in
 			errs = append(errs, err)
 			continue
 		}
-		h.publish(eventschema.EventDelete, heartbeat)
+		h.publish(eventschema.ChangeDelete, heartbeat)
 		n++
 	}
 	return n, errors.Join(errs...)
@@ -390,9 +390,9 @@ func (h *Heartbeats) personZone() (*time.Location, time.Time) {
 }
 
 // publish publishes the change to the heartbeat, when there's a broadcaster
-func (h *Heartbeats) publish(action eventschema.EventAction, heartbeat schema.Heartbeat) {
+func (h *Heartbeats) publish(action eventschema.ChangeAction, heartbeat schema.Heartbeat) {
 	if h.broadcaster == nil {
 		return
 	}
-	h.broadcaster.Publish(eventschema.Event{Action: action, Schema: Name, Table: HeartbeatTable, Row: heartbeat.ID.String()})
+	h.broadcaster.Publish(eventschema.Change{Action: action, Schema: Name, Table: HeartbeatTable, Row: heartbeat.ID.String()})
 }

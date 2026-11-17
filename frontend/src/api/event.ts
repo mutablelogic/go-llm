@@ -1,11 +1,11 @@
-// The events' API
+// The changes' API, of go-server's broadcaster
 
 import { requestStream } from './client';
 import type { Event, EventFilter } from '../schema/event';
 
-// The names of the server-sent events: each event, and the one which is sent
-// when the server stops, before the stream ends
-const eventName = 'event';
+// The names of the server-sent events: each change, and the one which is
+// sent when the server stops, before the stream ends
+const eventName = 'change';
 const eventShutdown = 'shutdown';
 
 // watchEvents calls the function with each event which matches the filter,
@@ -17,7 +17,7 @@ const eventShutdown = 'shutdown';
 export async function watchEvents(fn: (event: Event) => void, filter: EventFilter = {}, signal?: AbortSignal, onOpen?: () => void, onShutdown?: () => void): Promise<boolean> {
     let shutdown = false;
     try {
-        await requestStream('GET', '/events', (name, data) => {
+        await requestStream('GET', '/changes', (name, data) => {
             if (name === eventName) {
                 fn(data as Event);
             } else if (name === eventShutdown && !shutdown) {

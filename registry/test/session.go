@@ -10,9 +10,9 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -25,7 +25,7 @@ import (
 type SessionStore struct {
 	mu       sync.Mutex
 	sessions map[uuid.UUID]schema.Session
-	watchers map[chan<- eventschema.Event]struct{}
+	watchers map[chan<- eventschema.Change]struct{}
 }
 
 var _ registry.SessionStore = (*SessionStore)(nil)
@@ -35,7 +35,7 @@ var _ registry.SessionStore = (*SessionStore)(nil)
 
 // NewSessionStore returns a store of sessions in memory, which has none
 func NewSessionStore() *SessionStore {
-	return &SessionStore{sessions: make(map[uuid.UUID]schema.Session), watchers: make(map[chan<- eventschema.Event]struct{})}
+	return &SessionStore{sessions: make(map[uuid.UUID]schema.Session), watchers: make(map[chan<- eventschema.Change]struct{})}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -119,7 +119,7 @@ func (m *SessionStore) Delete(_ context.Context, id uuid.UUID, serial uint64) er
 
 // Watch sends the events which Changed is called with to the channel,
 // until the context is cancelled, when the returned channel is sent nil
-func (m *SessionStore) Watch(ctx context.Context, ch chan<- eventschema.Event) (<-chan error, error) {
+func (m *SessionStore) Watch(ctx context.Context, ch chan<- eventschema.Change) (<-chan error, error) {
 	if ch == nil {
 		return nil, llm.ErrBadParameter.With("missing channel")
 	}
@@ -139,7 +139,7 @@ func (m *SessionStore) Watch(ctx context.Context, ch chan<- eventschema.Event) (
 
 // Changed sends the event to the watchers, as a change which others made,
 // such as another server, and returns how many it was sent to
-func (m *SessionStore) Changed(event eventschema.Event) int {
+func (m *SessionStore) Changed(event eventschema.Change) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for ch := range m.watchers {

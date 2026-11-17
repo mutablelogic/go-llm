@@ -8,12 +8,12 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	memory "github.com/mutablelogic/go-llm/memory"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 )
@@ -95,16 +95,16 @@ func Test_Workspace(t *testing.T) {
 				return workspaceschema.Change{}
 			}
 		}
-		assert.Equal(t, workspaceschema.Change{Action: eventschema.EventUpdate}, next(), "it's watching")
+		assert.Equal(t, workspaceschema.Change{Action: eventschema.ChangeUpdate}, next(), "it's watching")
 		_, _, err := m.Remember(ctx, schema.MemoryMeta{Key: "garden", Description: "The garden", Body: "Roses"}, "")
 		require.NoError(t, err)
-		assert.Equal(t, workspaceschema.Change{Action: eventschema.EventCreate, URI: "memory:///memories/garden.md"}, next())
+		assert.Equal(t, workspaceschema.Change{Action: eventschema.ChangeCreate, URI: "memory:///memories/garden.md"}, next())
 		_, err = m.SetDetail(ctx, schema.FieldLocation, &schema.Detail{Value: "Berlin"})
 		require.NoError(t, err)
-		assert.Equal(t, workspaceschema.Change{Action: eventschema.EventUpdate, URI: memory.DetailsURI}, next())
+		assert.Equal(t, workspaceschema.Change{Action: eventschema.ChangeUpdate, URI: memory.DetailsURI}, next())
 		_, err = m.Forget(ctx, "garden")
 		require.NoError(t, err)
-		assert.Equal(t, workspaceschema.Change{Action: eventschema.EventDelete, URI: "memory:///memories/garden.md"}, next())
+		assert.Equal(t, workspaceschema.Change{Action: eventschema.ChangeDelete, URI: "memory:///memories/garden.md"}, next())
 	})
 
 	t.Run("Slow", func(t *testing.T) {
@@ -115,7 +115,7 @@ func Test_Workspace(t *testing.T) {
 		require.NoError(t, err)
 		ch := make(chan workspaceschema.Change)
 		go func() { _ = m.WatchResources(t.Context(), ch) }()
-		assert.Equal(t, workspaceschema.Change{Action: eventschema.EventUpdate}, <-ch, "it's watching")
+		assert.Equal(t, workspaceschema.Change{Action: eventschema.ChangeUpdate}, <-ch, "it's watching")
 		const n = 100
 		for i := range n {
 			key := fmt.Sprintf("memory_%03d", i)
@@ -129,10 +129,10 @@ func Test_Workspace(t *testing.T) {
 			select {
 			case change := <-ch:
 				switch change.Action {
-				case eventschema.EventCreate:
+				case eventschema.ChangeCreate:
 					assert.False(t, created[change.URI], "created once")
 					created[change.URI] = true
-				case eventschema.EventUpdate:
+				case eventschema.ChangeUpdate:
 					assert.True(t, created[change.URI], "updated, once it's said to be created")
 				default:
 					t.Fatalf("unexpected %v", change)

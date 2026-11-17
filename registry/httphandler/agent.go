@@ -9,7 +9,6 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	taggroup "github.com/mutablelogic/go-llm/internal/taggroup"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	httprequest "github.com/mutablelogic/go-server/pkg/httprequest"
@@ -50,7 +49,7 @@ func agentHandlers(r *registry.Registry, router *httprouter.Router, documentatio
 
 func agentCreateHandlers(reg *registry.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/agent", nil, func(path httprequest.PathItem) {
-		path.Tag(taggroup.ToolsAndAgents)
+		path.Tag(llm.ToolsAndAgentsTag)
 
 		// GET
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +99,7 @@ func agentCreateHandlers(reg *registry.Registry, router *httprouter.Router, docu
 
 func agentGetHandlers(reg *registry.Registry, router *httprouter.Router, documentation *openapi.MarkdownDoc) error {
 	return router.Register("llm/agent/{name}", jsonschema.MustFor[agentName](), func(path httprequest.PathItem) {
-		path.Tag(taggroup.ToolsAndAgents)
+		path.Tag(llm.ToolsAndAgentsTag)
 
 		// GET
 		path.Get(func(w http.ResponseWriter, r *http.Request) {

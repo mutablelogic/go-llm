@@ -11,9 +11,9 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -141,7 +141,7 @@ func (s *providerStore) Delete(_ context.Context, name string, serial uint64) er
 
 // Watch sends no events, as only the server changes the providers, until the
 // context is cancelled, when the returned channel is sent nil
-func (s *providerStore) Watch(ctx context.Context, ch chan<- eventschema.Event) (<-chan error, error) {
+func (s *providerStore) Watch(ctx context.Context, ch chan<- eventschema.Change) (<-chan error, error) {
 	if ch == nil {
 		return nil, llm.ErrBadParameter.With("missing channel")
 	}

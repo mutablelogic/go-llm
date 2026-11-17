@@ -10,9 +10,9 @@ import (
 
 	// Packages
 	gollm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -142,6 +142,6 @@ func (n *Namespace) Tools() []gollm.Tool {
 func (*Namespace) Type() string { return toolschema.NamespaceBuiltin }
 
 // Watch sends the namespace's tools, which don't change
-func (ns *Namespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (ns *Namespace) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return toolkit.WatchTools(ctx, ch, ns.Tools())
 }

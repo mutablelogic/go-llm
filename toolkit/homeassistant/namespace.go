@@ -7,10 +7,10 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/homeassistant/httpclient"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,7 +68,7 @@ func (namespace) SystemPrompt() string {
 func (namespace) Type() string { return toolschema.NamespaceBuiltin }
 
 // Watch sends the namespace's tools, which don't change
-func (ns *namespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+func (ns *namespace) Watch(ctx context.Context, ch chan<- eventschema.Change) error {
 	return toolkit.WatchTools(ctx, ch, ns.Tools())
 }
 

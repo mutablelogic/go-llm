@@ -14,14 +14,14 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
-	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	registry "github.com/mutablelogic/go-llm/registry"
 	schema "github.com/mutablelogic/go-llm/registry/schema"
 	test "github.com/mutablelogic/go-llm/registry/test"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"
+	broadcaster "github.com/mutablelogic/go-server/broadcaster"
+	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
@@ -29,7 +29,7 @@ import (
 
 func Test_AgentTools(t *testing.T) {
 	ctx := context.Background()
-	newRegistry := func(t *testing.T, store *test.AgentStore) (*registry.Registry, *toolkit.Toolkit, chan eventschema.Event) {
+	newRegistry := func(t *testing.T, store *test.AgentStore) (*registry.Registry, *toolkit.Toolkit, chan eventschema.Change) {
 		t.Helper()
 		b := broadcaster.New()
 		tk, err := toolkit.New(ctx, toolkit.WithBroadcaster(b))
@@ -54,8 +54,8 @@ func Test_AgentTools(t *testing.T) {
 		}
 		return names
 	}
-	toolEvent := func(action eventschema.EventAction, name string) eventschema.Event {
-		return eventschema.Event{Action: action, Schema: registry.EventSchema, Table: toolkit.ToolTable, Row: registry.AgentNamespace + ":" + name}
+	toolEvent := func(action eventschema.ChangeAction, name string) eventschema.Change {
+		return eventschema.Change{Action: action, Schema: registry.EventSchema, Table: toolkit.ToolTable, Row: registry.AgentNamespace + ":" + name}
 	}
 
 	t.Run("Changes", func(t *testing.T) {
@@ -81,10 +81,10 @@ func Test_AgentTools(t *testing.T) {
 		_, err = r.DeleteAgent(ctx, "segment")
 		require.NoError(t, err)
 		assert.Empty(t, tools(t, tk))
-		assert.Equal(t, []eventschema.Event{
-			toolEvent(eventschema.EventCreate, "segment"),
-			toolEvent(eventschema.EventUpdate, "segment"),
-			toolEvent(eventschema.EventDelete, "segment"),
+		assert.Equal(t, []eventschema.Change{
+			toolEvent(eventschema.ChangeCreate, "segment"),
+			toolEvent(eventschema.ChangeUpdate, "segment"),
+			toolEvent(eventschema.ChangeDelete, "segment"),
 		}, events(ch))
 	})
 
