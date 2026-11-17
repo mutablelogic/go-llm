@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	// Packages
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	client "github.com/mutablelogic/go-client"
-	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 	oauth2 "golang.org/x/oauth2"

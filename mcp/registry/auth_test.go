@@ -109,6 +109,82 @@ func Test_Authorize(t *testing.T) {
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
 
+func Test_AuthorizeRefresh(t *testing.T) {
+	// A token which expires at once is refreshed, with its resource, as
+	// it's used, and stored
+	setInterval(t, &registry.RetryInterval, time.Hour)
+	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	server := test.NewServer(t, test.WithAuth(), test.WithTokenLifetime(5))
+	sdkmcp.AddTool(server.MCP, &sdkmcp.Tool{Name: "echo", Description: "Echo"}, func(context.Context, *sdkmcp.CallToolRequest, struct{}) (*sdkmcp.CallToolResult, any, error) {
+		return &sdkmcp.CallToolResult{}, nil, nil
+	})
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	credentials := newSecrets(nil)
+	r, err := registry.New(registry.WithToolkit(tk), registry.WithCredentialsProvider(credentials), registry.WithName("test", "1.0"))
+	require.NoError(t, err)
+	first := authorized(t, r, server, credentials)
+
+	// It's connected, with a refreshed token, which is stored
+	run(t, r)
+	require.Eventually(t, func() bool { return status(t, r, "secure").Connected }, 5*time.Second, 5*time.Millisecond)
+	assert.Equal(t, schema.AuthAuthorized, status(t, r, "secure").Auth)
+	assert.Positive(t, server.Refreshed())
+	require.Eventually(t, func() bool {
+		credential, err := credentials.credential(t, "secure")
+		return err == nil && credential.Token != nil && credential.Token.AccessToken != first.Token.AccessToken
+	}, 5*time.Second, 5*time.Millisecond)
+}
+
+func Test_AuthorizeRevoked(t *testing.T) {
+	// A token whose refresh is refused, as it was revoked, needs to be
+	// authorized again
+	setInterval(t, &registry.RetryInterval, time.Hour)
+	setInterval(t, &registry.ConnectJitter, 10*time.Millisecond)
+	ctx := t.Context()
+	server := test.NewServer(t, test.WithAuth(), test.WithTokenLifetime(5))
+	sdkmcp.AddTool(server.MCP, &sdkmcp.Tool{Name: "echo", Description: "Echo"}, func(context.Context, *sdkmcp.CallToolRequest, struct{}) (*sdkmcp.CallToolResult, any, error) {
+		return &sdkmcp.CallToolResult{}, nil, nil
+	})
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	credentials := newSecrets(nil)
+	r, err := registry.New(registry.WithToolkit(tk), registry.WithCredentialsProvider(credentials), registry.WithName("test", "1.0"))
+	require.NoError(t, err)
+	authorized(t, r, server, credentials)
+
+	// Its token is refreshed as it connects, which is refused, as it was
+	// revoked, so it isn't tried again
+	server.Revoke()
+	run(t, r)
+	require.Eventually(t, func() bool { return status(t, r, "secure").Auth == schema.AuthRequired }, 5*time.Second, 5*time.Millisecond)
+	assert.False(t, status(t, r, "secure").Connected)
+}
+
+// authorized creates the connector "secure", for the server, and
+// authorizes it, before the registry runs, and returns its credential, as
+// it was stored
+func authorized(t *testing.T, r *registry.Registry, server *test.Server, credentials *secrets) *schema.Credential {
+	t.Helper()
+	ctx := t.Context()
+	_, err := r.CreateConnector(ctx, connector("secure", server.URL))
+	require.NoError(t, err)
+	callback := "http://localhost:8084/api" + registry.CallbackPath
+	authorizeURL, err := r.Authorize(ctx, "secure", callback)
+	require.NoError(t, err)
+	redirect, err := server.Approve(authorizeURL)
+	require.NoError(t, err)
+	to, err := url.Parse(redirect)
+	require.NoError(t, err)
+	_, err = r.Callback(ctx, to.Query().Get("state"), to.Query().Get("code"), "")
+	require.NoError(t, err)
+	credential, err := credentials.credential(t, "secure")
+	require.NoError(t, err)
+	require.NotNil(t, credential.Token)
+	return credential
+}
+
 // toolCount returns how many tools the toolkit has, in the namespace
 func toolCount(t *testing.T, tk *toolkit.Toolkit, namespace string) int {
 	t.Helper()

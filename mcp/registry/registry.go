@@ -15,8 +15,8 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
-	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	client "github.com/mutablelogic/go-llm/mcp/client"

@@ -24,7 +24,9 @@ type auth struct {
 	secrets   map[string]string   // The secrets of the clients which have them
 	codes     map[string]grant    // The codes which are approved, and not exchanged
 	tokens    map[string]bool     // The access tokens which are valid
-	refreshes map[string]bool     // The refresh tokens which are valid
+	refreshes map[string]string   // The refresh tokens which are valid, and their resources
+	refreshed int                 // How many tokens were refreshed
+	lifetime  int                 // How many seconds a token lasts
 }
 
 // grant is a code which was approved, for a client, its redirect URI, and
@@ -37,7 +39,7 @@ type grant struct {
 // LIFECYCLE
 
 func newAuth() *auth {
-	return &auth{clients: map[string][]string{}, secrets: map[string]string{}, codes: map[string]grant{}, tokens: map[string]bool{}, refreshes: map[string]bool{}}
+	return &auth{clients: map[string][]string{}, secrets: map[string]string{}, codes: map[string]grant{}, tokens: map[string]bool{}, refreshes: map[string]string{}, lifetime: 3600}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -94,6 +96,13 @@ func (s *Server) Client(id, secret string, redirects ...string) {
 	if secret != "" {
 		s.auth.secrets[id] = secret
 	}
+}
+
+// Refreshed returns how many tokens the server has refreshed
+func (s *Server) Refreshed() int {
+	s.auth.mu.Lock()
+	defer s.auth.mu.Unlock()
+	return s.auth.refreshed
 }
 
 // Revoke makes every token the server issued invalid, so it needs to be
@@ -166,6 +175,7 @@ func (a *auth) token(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	var resource string
 	switch r.PostForm.Get("grant_type") {
 	case "authorization_code":
 		// The client is authenticated with HTTP Basic, or in the form
@@ -192,20 +202,28 @@ func (a *auth) token(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_grant", "error_description": "code_verifier doesn't match"})
 			return
 		}
+		resource = g.resource
 	case "refresh_token":
-		if !a.refreshes[r.PostForm.Get("refresh_token")] {
+		// A refresh is for the resource the token was granted for
+		granted, ok := a.refreshes[r.PostForm.Get("refresh_token")]
+		if !ok {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_grant"})
+			return
+		} else if r.PostForm.Get("resource") != granted {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_target", "error_description": "the resource isn't the grant's"})
 			return
 		}
 		delete(a.refreshes, r.PostForm.Get("refresh_token"))
+		resource = granted
+		a.refreshed++
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "unsupported_grant_type"})
 		return
 	}
 	a.n++
 	access, refresh := fmt.Sprintf("access-%d", a.n), fmt.Sprintf("refresh-%d", a.n)
-	a.tokens[access], a.refreshes[refresh] = true, true
-	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": 3600, "refresh_token": refresh})
+	a.tokens[access], a.refreshes[refresh] = true, resource
+	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "token_type": "Bearer", "expires_in": a.lifetime, "refresh_token": refresh})
 }
 
 // writeJSON writes the value, as JSON, with the status

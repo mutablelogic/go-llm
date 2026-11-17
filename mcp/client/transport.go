@@ -8,8 +8,8 @@ import (
 
 	// Packages
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
-	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	oauth2 "golang.org/x/oauth2"
 )
 

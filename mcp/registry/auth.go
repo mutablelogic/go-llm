@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"net/http"
 	"net/url"
 	"slices"
 	"strings"
@@ -13,8 +12,9 @@ import (
 	"time"
 
 	// Packages
+	goauth "github.com/mutablelogic/go-auth"
+	authclient "github.com/mutablelogic/go-auth/auth/httpclient"
 	llm "github.com/mutablelogic/go-llm"
-	authclient "github.com/mutablelogic/go-llm/auth/httpclient"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/mcp/schema"
 	oauth2 "golang.org/x/oauth2"
@@ -131,7 +131,7 @@ func (r *Registry) Authorize(ctx context.Context, name, callback string) (string
 		}
 		registration, err := c.Register(discoverCtx, server, r.clientName(), redirects, scopes...)
 		if err != nil {
-			return "", err
+			return "", llmError(err)
 		}
 		credential.ClientID, credential.ClientSecret, credential.RedirectURIs = registration.ClientID, registration.ClientSecret, registration.RedirectURIs
 	}
@@ -241,16 +241,28 @@ func (r *Registry) tokenSource(connector schema.Connector) oauth2.TokenSource {
 		// Or another client's
 		return nil
 	}
-	config, err := r.config(ctx, connector, *credential, "")
+	id, secret, err := r.clientOf(ctx, connector, *credential)
+	if err != nil {
+		r.log().Warn("connector's token can't be refreshed", "connector", connector.Name, "error", err.Error())
+		return nil
+	}
+	c, err := authclient.New(connector.URL)
 	if err != nil {
 		r.log().Warn("connector's token can't be refreshed", "connector", connector.Name, "error", err.Error())
 		return nil
 	}
 
-	// It's refreshed within the connect timeout, so a token endpoint which
-	// doesn't reply doesn't hold up the connector's requests
-	refreshCtx := context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: r.connectTimeout})
-	return &storedTokens{registry: r, name: connector.Name, last: credential.Token, source: config.TokenSource(refreshCtx, credential.Token)}
+	// It's refreshed with its resource, which oauth2's token source doesn't
+	// send, so an authorization server which binds tokens to their
+	// resources refreshes it
+	grant := &authclient.Grant{
+		Server:   authclient.ServerMetadata{Issuer: credential.Issuer, AuthorizationEndpoint: credential.AuthorizationEndpoint, TokenEndpoint: credential.TokenEndpoint},
+		Client:   authclient.Registration{ClientID: id, ClientSecret: secret},
+		Resource: credential.Resource,
+		Scopes:   credential.Scopes,
+		Token:    credential.Token,
+	}
+	return &storedTokens{registry: r, name: connector.Name, last: credential.Token, source: c.TokenSource(ctx, grant, nil)}
 }
 
 // config returns the configuration of the authorization code grant, of the
@@ -258,18 +270,51 @@ func (r *Registry) tokenSource(connector schema.Connector) oauth2.TokenSource {
 // the connector's, as its credentials are expanded, when it has a client of
 // its own, or the one its authorization server registered, when it did
 func (r *Registry) config(ctx context.Context, connector schema.Connector, credential schema.Credential, redirect string) (*oauth2.Config, error) {
-	id, secret := credential.ClientID, credential.ClientSecret
-	if credential.ClientCredential != "" {
-		if credential.ClientCredential != connector.ClientIDCredential {
-			return nil, llm.ErrConflict.Withf("connector %q has another client", connector.Name)
-		}
-		var err error
-		if id, secret, err = r.clientCredentials(ctx, connector); err != nil {
-			return nil, err
-		}
+	id, secret, err := r.clientOf(ctx, connector, credential)
+	if err != nil {
+		return nil, err
 	}
 	server := authclient.ServerMetadata{Issuer: credential.Issuer, AuthorizationEndpoint: credential.AuthorizationEndpoint, TokenEndpoint: credential.TokenEndpoint}
 	return server.Config(authclient.Registration{ClientID: id, ClientSecret: secret}, redirect, credential.Scopes...), nil
+}
+
+// clientOf returns the ID and secret of the client of the connector's
+// credential: the connector's, as its credentials are expanded, when it has
+// a client of its own, or the one its authorization server registered
+func (r *Registry) clientOf(ctx context.Context, connector schema.Connector, credential schema.Credential) (string, string, error) {
+	if credential.ClientCredential == "" {
+		return credential.ClientID, credential.ClientSecret, nil
+	} else if credential.ClientCredential != connector.ClientIDCredential {
+		return "", "", llm.ErrConflict.Withf("connector %q has another client", connector.Name)
+	}
+	return r.clientCredentials(ctx, connector)
+}
+
+// llmError returns go-auth's error as the llm error of its kind, with its
+// reason, so it's mapped to its HTTP status, as the registry's errors are,
+// or the error, when it isn't go-auth's
+func llmError(err error) error {
+	var kind goauth.Err
+	if !errors.As(err, &kind) {
+		return err
+	}
+	reason := strings.TrimPrefix(err.Error(), kind.Error()+": ")
+	switch kind {
+	case goauth.ErrNotFound:
+		return llm.ErrNotFound.With(reason)
+	case goauth.ErrBadParameter:
+		return llm.ErrBadParameter.With(reason)
+	case goauth.ErrNotImplemented:
+		return llm.ErrNotImplemented.With(reason)
+	case goauth.ErrConflict:
+		return llm.ErrConflict.With(reason)
+	case goauth.ErrServiceUnavailable:
+		return llm.ErrServiceUnavailable.With(reason)
+	case goauth.ErrForbidden, goauth.ErrInvalidProvider:
+		return llm.ErrForbidden.With(reason)
+	default:
+		return llm.ErrInternalServerError.With(reason)
+	}
 }
 
 // clientName returns the name a client is registered with, which is the
