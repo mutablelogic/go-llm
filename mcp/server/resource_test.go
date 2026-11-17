@@ -75,8 +75,17 @@ func (f files) List(_ context.Context, req schema.ListRequest) (*schema.ListResp
 	return response, nil
 }
 
-// Read reads a file, by its URI
+// gone is a resource which is found, but whose content isn't
+type gone struct{ providerschema.Resource }
+
+func (gone) Read(context.Context) (llm.ReadFunc, error) { return nil, llm.ErrNotFound.With("gone") }
+
+// Read reads a file, by its URI, of which gone.md is found, but its content
+// isn't
 func (f files) Read(_ context.Context, uri string) (llm.Resource, error) {
+	if uri == "file:///gone.md" {
+		return gone{}, nil
+	}
 	text, exists := f[strings.TrimPrefix(uri, "file:///")]
 	if !exists {
 		return nil, llm.ErrNotFound.With(uri)
@@ -152,7 +161,9 @@ func Test_Workspace(t *testing.T) {
 		assert.Equal(t, "# A", string(data))
 		assert.Equal(t, "text/markdown", resource.Type())
 		_, err = ws.Read(ctx, "file:///missing.md")
-		assert.Error(t, err)
+		assert.ErrorIs(t, err, llm.ErrNotFound, "MCP's error is ErrNotFound")
+		_, err = ws.Read(ctx, "file:///gone.md")
+		assert.ErrorIs(t, err, llm.ErrNotFound, "as is one whose content is gone")
 	})
 }
 
