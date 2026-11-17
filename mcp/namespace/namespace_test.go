@@ -271,7 +271,8 @@ func Test_Workspace(t *testing.T) {
 	server.MCP.AddResource(&sdkmcp.Resource{URI: "file:///a.md", Name: "a.md", MIMEType: "text/markdown"}, func(_ context.Context, req *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
 		return &sdkmcp.ReadResourceResult{Contents: []*sdkmcp.ResourceContents{{URI: req.Params.URI, MIMEType: "text/markdown", Text: "# A"}}}, nil
 	})
-	registry := workspace.New()
+	registry, err := workspace.New()
+	require.NoError(t, err)
 	tk, err := toolkit.New(ctx, toolkit.WithWorkspaces(registry))
 	require.NoError(t, err)
 	ns, err := namespace.New("test", "")

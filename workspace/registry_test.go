@@ -2,12 +2,16 @@ package workspace_test
 
 import (
 	"context"
+	"encoding/json"
 	"maps"
 	"slices"
 	"testing"
+	"time"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
@@ -23,7 +27,8 @@ func (empty) List(context.Context, schema.ListRequest) (*schema.ListResponse, er
 }
 
 func Test_Registry(t *testing.T) {
-	r := workspace.New()
+	r, err := workspace.New()
+	require.NoError(t, err)
 
 	// Workspaces are added, by their names, which are unique identifiers
 	require.NoError(t, r.Add("notes", empty{}))
@@ -45,7 +50,7 @@ func Test_Registry(t *testing.T) {
 	assert.Equal(t, []string{"files", "notes"}, names)
 
 	// And removed
-	_, err := r.Remove("notes")
+	_, err = r.Remove("notes")
 	require.NoError(t, err)
 	assert.ErrorIs(t, r.With("notes", func(workspace.Workspace) error { return nil }), llm.ErrNotFound)
 	_, err = r.Remove("notes")
@@ -66,7 +71,8 @@ func Test_Read(t *testing.T) {
 	// A workspace which is a Reader is read, by URI, and one which isn't
 	// isn't
 	ctx := context.Background()
-	r := workspace.New()
+	r, err := workspace.New()
+	require.NoError(t, err)
 	require.NoError(t, r.Add("empty", empty{}))
 	require.NoError(t, r.Add("notes", readable{}))
 	resource, err := r.Read(ctx, "notes", "file:///note.md")
@@ -94,12 +100,13 @@ func Test_Available(t *testing.T) {
 	// A workspace which isn't available isn't listed, or used, until it is,
 	// and Resolve reads from any workspace which has the resource
 	ctx := context.Background()
-	r := workspace.New()
+	r, err := workspace.New()
+	require.NoError(t, err)
 	ws := &sometimes{}
 	require.NoError(t, r.Add("notes", ws))
 	assert.Empty(t, slices.Collect(maps.Keys(maps.Collect(r.All()))))
 	assert.ErrorIs(t, r.With("notes", func(workspace.Workspace) error { return nil }), llm.ErrNotFound)
-	_, err := r.Resolve(ctx, "file:///note.md")
+	_, err = r.Resolve(ctx, "file:///note.md")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 
 	ws.available = true
@@ -109,4 +116,66 @@ func Test_Available(t *testing.T) {
 	assert.Equal(t, "text/markdown", resource.Type())
 	_, err = r.Resolve(ctx, "file:///other.md")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
+}
+
+// changing is a workspace whose changes are said
+type changing struct {
+	empty
+	changes chan schema.Change
+}
+
+func (c changing) Watch(ctx context.Context, ch chan<- schema.Change) error {
+	for {
+		select {
+		case change := <-c.changes:
+			select {
+			case ch <- change:
+			case <-ctx.Done():
+				return nil
+			}
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+func Test_Events(t *testing.T) {
+	// A workspace which is added, or removed, and a watched workspace's
+	// changes, are published
+	ctx := context.Background()
+	b := broadcaster.New()
+	events := make(chan eventschema.Event, 16)
+	watchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	_, err := b.Watch(watchCtx, events)
+	require.NoError(t, err)
+	r, err := workspace.New(workspace.WithBroadcaster(b))
+	require.NoError(t, err)
+	defer r.Close()
+	next := func() eventschema.Event {
+		t.Helper()
+		select {
+		case event := <-events:
+			return event
+		case <-time.After(5 * time.Second):
+			t.Fatal("no event")
+			return eventschema.Event{}
+		}
+	}
+
+	ws := changing{changes: make(chan schema.Change)}
+	require.NoError(t, r.Add("notes", ws))
+	assert.Equal(t, eventschema.Event{Action: eventschema.EventCreate, Schema: workspace.EventSchema, Table: workspace.WorkspaceTable, Row: "notes"}, next())
+
+	ws.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}
+	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{"uri":"file:///a.md"}`)}, next())
+	ws.changes <- schema.Change{Action: eventschema.EventUpdate}
+	assert.Equal(t, eventschema.Event{Action: eventschema.EventUpdate, Schema: workspace.EventSchema, Table: workspace.ResourceTable, Row: "notes", Data: json.RawMessage(`{}`)}, next())
+
+	_, err = r.Remove("notes")
+	require.NoError(t, err)
+	assert.Equal(t, eventschema.Event{Action: eventschema.EventDelete, Schema: workspace.EventSchema, Table: workspace.WorkspaceTable, Row: "notes"}, next())
+
+	_, err = workspace.New(workspace.WithBroadcaster(nil))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }

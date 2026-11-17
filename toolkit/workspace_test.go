@@ -65,7 +65,8 @@ func (reader) Run(ctx context.Context, input json.RawMessage) (any, error) {
 
 func TestWorkspaces(t *testing.T) {
 	ctx := context.Background()
-	registry := workspace.New()
+	registry, err := workspace.New()
+	require.NoError(t, err)
 	tk, err := toolkit.New(ctx, toolkit.WithWorkspaces(registry))
 	require.NoError(t, err)
 	assert.Same(t, registry, tk.Workspaces())

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"iter"
 	"maps"
@@ -10,6 +11,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
+	schema "github.com/mutablelogic/go-llm/workspace/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
 
@@ -19,16 +22,60 @@ import (
 // Registry is the workspaces, by their names. It's safe to use
 // concurrently.
 type Registry struct {
+	opt
 	mu         sync.RWMutex
 	workspaces map[string]Workspace
+
+	// The lifetime of the watches of the workspaces which are Watchers,
+	// with a broadcaster, which ends when Close is called, and the cancels
+	// of each, by name
+	ctx     context.Context
+	cancel  context.CancelFunc
+	watches map[string]context.CancelFunc
 }
+
+// ResourceEvent is the data of an event of a workspace's folders, and
+// resources, which changed: the URI of the folder, or resource, or none,
+// when it isn't known which
+type ResourceEvent struct {
+	URI string `json:"uri,omitempty"`
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+const (
+	// EventSchema is the schema of the registry's events
+	EventSchema = "workspace"
+
+	// WorkspaceTable is the table of the events of the workspaces which
+	// are added, and removed, whose rows are their names
+	WorkspaceTable = "workspace"
+
+	// ResourceTable is the table of the events of the workspaces' folders,
+	// and resources, which change, whose rows are the workspaces' names,
+	// and whose data is a ResourceEvent
+	ResourceTable = "resource"
+)
 
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// New returns a registry, with no workspaces
-func New() *Registry {
-	return &Registry{workspaces: make(map[string]Workspace)}
+// New returns a registry, with no workspaces, with the options, such as
+// the broadcaster its changes are published to, with WithBroadcaster
+func New(opts ...Opt) (*Registry, error) {
+	r := &Registry{workspaces: make(map[string]Workspace), watches: make(map[string]context.CancelFunc)}
+	if err := r.opt.apply(opts); err != nil {
+		return nil, err
+	}
+	r.ctx, r.cancel = context.WithCancel(context.Background())
+	return r, nil
+}
+
+// Close stops watching the workspaces, whose changes aren't published
+func (r *Registry) Close() error {
+	r.cancel()
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -50,6 +97,14 @@ func (r *Registry) Add(name string, ws Workspace) error {
 		return llm.ErrConflict.Withf("workspace %q already exists", name)
 	}
 	r.workspaces[name] = ws
+	r.publish(eventschema.EventCreate, WorkspaceTable, name, nil)
+
+	// Publish its changes, when it says them
+	if watcher, ok := ws.(Watcher); ok && r.broadcaster != nil {
+		ctx, cancel := context.WithCancel(r.ctx)
+		r.watches[name] = cancel
+		go r.watch(ctx, name, watcher)
+	}
 	return nil
 }
 
@@ -63,6 +118,11 @@ func (r *Registry) Remove(name string) (Workspace, error) {
 		return nil, llm.ErrNotFound.Withf("workspace %q", name)
 	}
 	delete(r.workspaces, name)
+	if cancel, exists := r.watches[name]; exists {
+		cancel()
+		delete(r.watches, name)
+	}
+	r.publish(eventschema.EventDelete, WorkspaceTable, name, nil)
 	return ws, nil
 }
 
@@ -132,6 +192,42 @@ func (r *Registry) All() iter.Seq2[string, Workspace] {
 				return
 			}
 		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// watch publishes the workspace's changes, until the context is cancelled,
+// as it's removed, or the registry is closed
+func (r *Registry) watch(ctx context.Context, name string, watcher Watcher) {
+	ch := make(chan schema.Change, 16)
+	done := make(chan error, 1)
+	go func() { done <- watcher.Watch(ctx, ch) }()
+	for {
+		select {
+		case change := <-ch:
+			data, err := json.Marshal(ResourceEvent{URI: change.URI})
+			if err != nil {
+				continue
+			}
+			r.mu.RLock()
+			if ctx.Err() == nil {
+				// It's still in the registry, as it isn't removed while the
+				// lock is held, and its watch is cancelled once it is
+				r.publish(change.Action, ResourceTable, name, data)
+			}
+			r.mu.RUnlock()
+		case <-done:
+			return
+		}
+	}
+}
+
+// publish publishes the change, when there's a broadcaster
+func (r *Registry) publish(action eventschema.EventAction, table, row string, data json.RawMessage) {
+	if r.broadcaster != nil {
+		r.broadcaster.Publish(eventschema.Event{Action: action, Schema: EventSchema, Table: table, Row: row, Data: data})
 	}
 }
 
