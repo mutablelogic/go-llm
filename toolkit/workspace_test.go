@@ -101,6 +101,37 @@ func TestWorkspaces(t *testing.T) {
 		assert.JSONEq(t, `"# Note"`, string(result))
 	})
 
+	t.Run("ResolveError", func(t *testing.T) {
+		// A resolver which fails, rather than not having a resource, says so
+		failing := toolkit.WithResolver(ctx, func(_ context.Context, uris ...string) ([]llm.Resource, error) {
+			if len(uris) == 1 && uris[0] == "session:///a" {
+				return nil, llm.ErrServiceUnavailable.With("the store is down")
+			}
+			return nil, llm.ErrNotFound.With("not all of them")
+		})
+		resolve := toolkit.NewNamespace("both", "", both{})
+		require.NoError(t, tk.Add(resolve))
+		_, err := tk.CallTool(failing, "both:both", nil)
+		assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	})
+
+	// A namespace which is removed doesn't remove a workspace which replaced
+	// it, by its name
+	_, err = registry.Remove("notes")
+	require.NoError(t, err)
+	replacement := notes{}
+	require.NoError(t, registry.Add("notes", &replacement))
 	require.NoError(t, tk.Remove(ns))
-	assert.ErrorIs(t, registry.With("notes", func(workspace.Workspace) error { return nil }), llm.ErrNotFound)
+	assert.NoError(t, registry.With("notes", func(workspace.Workspace) error { return nil }), "the replacement")
+}
+
+// both is a tool which reads a session's resource, and a workspace's
+type both struct{ toolkit.Base }
+
+func (both) Name() string                    { return "both" }
+func (both) Description() string             { return "Read two resources" }
+func (both) InputSchema() *jsonschema.Schema { return nil }
+func (both) Run(ctx context.Context, _ json.RawMessage) (any, error) {
+	_, err := toolkit.Resources(ctx, "session:///a", "file:///note.md")
+	return nil, err
 }

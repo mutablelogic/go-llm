@@ -5,6 +5,7 @@ import (
 	"errors"
 	"iter"
 	"maps"
+	"reflect"
 	"slices"
 	"sync"
 
@@ -62,8 +63,25 @@ func (r *Registry) Remove(name string) (Workspace, error) {
 	if !exists {
 		return nil, llm.ErrNotFound.Withf("workspace %q", name)
 	}
-	delete(r.workspaces, name)
+	r.remove(name)
 	return ws, nil
+}
+
+// RemoveIf removes the workspace with the name, when it's the workspace,
+// rather than one which replaced it, and returns true, or returns false
+func (r *Registry) RemoveIf(name string, ws Workspace) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if existing, exists := r.workspaces[name]; !exists || !same(existing, ws) {
+		return false
+	}
+	r.remove(name)
+	return true
+}
+
+// remove removes the workspace with the name. The caller holds the lock.
+func (r *Registry) remove(name string) {
+	delete(r.workspaces, name)
 }
 
 // With calls the function with the workspace with the name, and returns its
@@ -145,4 +163,19 @@ func available(ws Workspace) bool {
 		return a.Available()
 	}
 	return true
+}
+
+// same returns true when the workspaces are the same one, which they are
+// when they're equal values, which can be compared
+func same(a, b Workspace) (result bool) {
+	ta, tb := reflect.TypeOf(a), reflect.TypeOf(b)
+	if ta != tb || ta == nil || !ta.Comparable() {
+		return false
+	}
+	defer func() {
+		if recover() != nil {
+			result = false
+		}
+	}()
+	return a == b
 }

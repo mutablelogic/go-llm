@@ -110,3 +110,13 @@ func Test_Available(t *testing.T) {
 	_, err = r.Resolve(ctx, "file:///other.md")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
+
+func Test_RemoveIf(t *testing.T) {
+	// A workspace is removed only when it's the one with the name
+	r := workspace.New()
+	first, second := &sometimes{available: true}, &sometimes{available: true}
+	require.NoError(t, r.Add("notes", first))
+	assert.False(t, r.RemoveIf("notes", second), "another workspace")
+	assert.True(t, r.RemoveIf("notes", first))
+	assert.False(t, r.RemoveIf("notes", first), "once it's removed")
+}
