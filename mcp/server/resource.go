@@ -72,7 +72,9 @@ func (s *Server) readResource(ctx context.Context, req sdkmcp.Request) (sdkmcp.R
 		return nil, err
 	}
 	data, err := llm.ReadAll(ctx, resource)
-	if err != nil {
+	if errors.Is(err, llm.ErrNotFound) {
+		return nil, sdkmcp.ResourceNotFoundError(uri)
+	} else if err != nil {
 		return nil, err
 	}
 	contents := &sdkmcp.ResourceContents{URI: uri, MIMEType: resource.Type()}

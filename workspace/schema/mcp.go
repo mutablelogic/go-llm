@@ -68,7 +68,7 @@ func (r ResourceMeta) MCP() *sdkmcp.Resource {
 		Size:        r.Size,
 	}
 	if !r.Modified.IsZero() {
-		resource.Annotations = &sdkmcp.Annotations{LastModified: r.Modified.UTC().Format(time.RFC3339)}
+		resource.Annotations = &sdkmcp.Annotations{LastModified: r.Modified.UTC().Format(time.RFC3339Nano)}
 	}
 	meta := sdkmcp.Meta{}
 	if len(r.Meta) > 0 {
@@ -117,7 +117,7 @@ func ResourceMetaOf(resource *sdkmcp.Resource) ResourceMeta {
 		Size:        resource.Size,
 	}
 	if resource.Annotations != nil && resource.Annotations.LastModified != "" {
-		if modified, err := time.Parse(time.RFC3339, resource.Annotations.LastModified); err == nil {
+		if modified, err := time.Parse(time.RFC3339Nano, resource.Annotations.LastModified); err == nil {
 			r.Modified = modified
 		}
 	}

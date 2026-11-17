@@ -43,12 +43,12 @@ func Test_ResourceMetaMCP(t *testing.T) {
 		Title:    "Meeting",
 		Type:     "text/markdown",
 		Size:     42,
-		Modified: time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC),
+		Modified: time.Date(2026, 11, 17, 10, 0, 0, 123456789, time.UTC),
 		Meta:     []schema.Meta{{NS: "markdown", Key: "tags", Text: "work", Value: json.RawMessage(`["work"]`)}},
 		Artwork:  []schema.Artwork{{Key: "thumbnail", Type: "image/jpeg", URI: "artwork:///1"}},
 	}
 	resource := r.MCP()
-	assert.Equal(t, "2026-11-17T10:00:00Z", resource.Annotations.LastModified)
+	assert.Equal(t, "2026-11-17T10:00:00.123456789Z", resource.Annotations.LastModified, "with its fraction of a second")
 	assert.Equal(t, r, schema.ResourceMetaOf(roundTrip(t, resource)))
 
 	// A resource of another server is as it is

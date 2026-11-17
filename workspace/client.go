@@ -2,10 +2,13 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"path"
 	"strings"
 
 	// Packages
+	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	schema "github.com/mutablelogic/go-llm/workspace/schema"
@@ -70,7 +73,7 @@ func (w *clientWorkspace) List(ctx context.Context, req schema.ListRequest) (*sc
 func (w *clientWorkspace) Read(ctx context.Context, uri string) (llm.Resource, error) {
 	result, err := w.client.ReadResource(ctx, uri)
 	if err != nil {
-		return nil, err
+		return nil, notFound(err)
 	} else if len(result.Contents) == 0 || result.Contents[0] == nil {
 		return nil, llm.ErrNotFound.Withf("resource %q has no contents", uri)
 	}
@@ -83,6 +86,19 @@ func (w *clientWorkspace) Read(ctx context.Context, uri string) (llm.Resource, e
 		uri = c.URI
 	}
 	return &contents{uri: uri, name: path.Base(strings.TrimSuffix(uri, "/")), mimeType: c.MIMEType, data: data}, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// notFound returns MCP's resource not found error as one which is
+// ErrNotFound, as well as itself, as a Reader's is, or the error, as it is
+func notFound(err error) error {
+	var wire *jsonrpc.Error
+	if errors.As(err, &wire) && wire.Code == sdkmcp.CodeResourceNotFound {
+		return llm.ErrNotFound.Withf("%w", err)
+	}
+	return err
 }
 
 ///////////////////////////////////////////////////////////////////////////////
