@@ -25,7 +25,7 @@ await esbuild.build({
     bundle: true,
     outdir: `${buildDir}/dist`,
     format: 'esm',
-    target: 'es2021',
+    target: 'es2022',
     minify: true,
     sourcemap: true,
     loader: { '.woff2': 'file' },

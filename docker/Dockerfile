@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 ARG OS=linux
 ARG ARCH=amd64
 ARG GO_VERSION=1.27
@@ -18,9 +19,11 @@ RUN set -x && apt-get update -y \
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Build the commands, with the web UI
+# Build the commands, with the web UI, whose @mutablelogic packages are
+# installed from GitHub Packages, with the github_token secret, which isn't
+# kept in the image
 COPY . .
-RUN set -x \
+RUN --mount=type=secret,id=github_token,env=GITHUB_TOKEN set -x \
     && OS=${OS} ARCH=${ARCH} CGO_ENABLED=0 make all \
     && install -m 0755 docker/entrypoint.sh build/entrypoint.sh
 

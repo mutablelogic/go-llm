@@ -68,7 +68,9 @@ client: go-dep mkdir
 .PHONY: docker
 docker: docker-dep
 	@echo Build docker image llm:${VERSION}-linux-${ARCH}
+	@test -n "$${GITHUB_TOKEN}" || (echo "Missing GITHUB_TOKEN, which needs read:packages to install @mutablelogic packages from GitHub Packages" && exit 1)
 	@${DOCKER} build --build-arg OS=linux --build-arg ARCH=${ARCH} --build-arg SOURCE=https://github.com/mutablelogic/go-llm \
+		--secret id=github_token,env=GITHUB_TOKEN \
 		-f docker/Dockerfile -t llm:${VERSION}-linux-${ARCH} .
 
 ###############################################################################
@@ -126,6 +128,7 @@ clean:
 .PHONY: npm-dep
 npm-dep:
 	@test -f "${NPM}" && test -x "${NPM}"  || (echo "Missing npm binary, which builds the web UI" && exit 1)
+	@test -n "$${GITHUB_TOKEN}" || (echo "Missing GITHUB_TOKEN, which needs read:packages to install @mutablelogic packages from GitHub Packages" && exit 1)
 
 .PHONY: docker-dep
 docker-dep:
