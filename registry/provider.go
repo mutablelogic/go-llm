@@ -7,6 +7,7 @@ import (
 	"time"
 
 	// Packages
+	goauth "github.com/mutablelogic/go-auth"
 	client "github.com/mutablelogic/go-client"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
@@ -281,7 +282,7 @@ func (r *Registry) newProvider(ctx context.Context, req schema.Provider) (string
 	// Expand the API key's credentials, of which one which doesn't exist is
 	// a request which isn't valid, rather than a provider which isn't found
 	apiKey, err := r.credentials.Expand(ctx, req.APIKey)
-	if errors.Is(err, llm.ErrNotFound) {
+	if errors.Is(err, goauth.ErrNotFound) {
 		return "", nil, nil, llm.ErrBadParameter.Withf("api key: %v", err)
 	} else if err != nil {
 		return "", nil, nil, err

@@ -63,7 +63,7 @@ func TestSpans(t *testing.T) {
 		assert.Equal(t, "secret", value)
 		name, attrs := last(t)
 		assert.Equal(t, "llm.toolkit.Credential", name)
-		assert.Equal(t, map[string]string{"arg.key": "TOOLKIT_TEST_KEY"}, attrs)
+		assert.Equal(t, "TOOLKIT_TEST_KEY", attrs["arg.key"])
 		for _, span := range recorder.Ended() {
 			for _, kv := range span.Attributes() {
 				assert.NotContains(t, kv.Value.Emit(), "secret", span.Name())

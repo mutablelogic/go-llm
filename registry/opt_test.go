@@ -2,6 +2,7 @@ package registry_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	// Packages
+	goauth "github.com/mutablelogic/go-auth"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	registry "github.com/mutablelogic/go-llm/registry"
@@ -34,7 +36,7 @@ func (c credentials) Expand(_ context.Context, value string) (string, error) {
 	result := os.Expand(value, func(key string) string {
 		v, ok := c[key]
 		if !ok {
-			err = errors.Join(err, llm.ErrNotFound.Withf("credential %q", key))
+			err = errors.Join(err, goauth.ErrNotFound.Withf("credential %q", key))
 		}
 		return v
 	})
@@ -42,16 +44,18 @@ func (c credentials) Expand(_ context.Context, value string) (string, error) {
 }
 
 // Get returns the credential with the key, or ErrNotFound
-func (c credentials) Get(_ context.Context, key string) (string, error) {
+func (c credentials) Get(_ context.Context, key string) (json.RawMessage, error) {
 	if v, ok := c[key]; ok {
-		return v, nil
+		return json.Marshal(v)
 	}
-	return "", llm.ErrNotFound.Withf("credential %q", key)
+	return nil, goauth.ErrNotFound.Withf("credential %q", key)
 }
 
 // Set and Delete aren't used by the tests
-func (credentials) Set(context.Context, string, string) error { return llm.ErrNotImplemented }
-func (credentials) Delete(context.Context, string) error      { return llm.ErrNotImplemented }
+func (credentials) Set(context.Context, string, json.RawMessage) error {
+	return goauth.ErrNotImplemented
+}
+func (credentials) Delete(context.Context, string) error { return goauth.ErrNotImplemented }
 
 // newOllama returns a stub Ollama server, which replies to pings, and
 // records the last bearer token it was sent
@@ -130,10 +134,10 @@ func Test_CredentialsProvider(t *testing.T) {
 // failing is a credentials provider which fails with its error
 type failing struct{ err error }
 
-func (f failing) Get(context.Context, string) (string, error)    { return "", f.err }
-func (f failing) Set(context.Context, string, string) error      { return f.err }
-func (f failing) Delete(context.Context, string) error           { return f.err }
-func (f failing) Expand(context.Context, string) (string, error) { return "", f.err }
+func (f failing) Get(context.Context, string) (json.RawMessage, error) { return nil, f.err }
+func (f failing) Set(context.Context, string, json.RawMessage) error   { return f.err }
+func (f failing) Delete(context.Context, string) error                 { return f.err }
+func (f failing) Expand(context.Context, string) (string, error)       { return "", f.err }
 
 func Test_ClientOpts(t *testing.T) {
 	// The providers which are created have the registry's client options

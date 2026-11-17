@@ -7,9 +7,9 @@ import (
 	"uuid"
 
 	// Packages
+	env "github.com/mutablelogic/go-auth/credential/env"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	env "github.com/mutablelogic/go-llm/auth/credentials/env"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolschema "github.com/mutablelogic/go-llm/toolkit/schema"

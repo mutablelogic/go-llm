@@ -3,6 +3,7 @@ package toolkit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"maps"
 	"reflect"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"uuid"
 
 	// Packages
+	goauth "github.com/mutablelogic/go-auth"
 	client "github.com/mutablelogic/go-client"
 	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
@@ -229,7 +231,9 @@ func (self *Toolkit) Credential(ctx context.Context, key string) (_ string, err 
 		return "", llm.ErrBadParameter.With("missing credential key")
 	}
 	value, err := self.credentials.Expand(ctx, "${"+key+"}")
-	if err != nil {
+	if errors.Is(err, goauth.ErrNotFound) {
+		return "", llm.ErrNotFound.Withf("credential %q isn't set", key)
+	} else if err != nil {
 		return "", err
 	} else if strings.TrimSpace(value) == "" {
 		return "", llm.ErrNotFound.Withf("credential %q is empty", key)

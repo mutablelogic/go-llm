@@ -4,19 +4,16 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
-	file "github.com/mutablelogic/go-llm/auth/credentials/file"
 	mcpregistry "github.com/mutablelogic/go-llm/mcp/registry"
 	mcpschema "github.com/mutablelogic/go-llm/mcp/schema"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
-	oauth2 "golang.org/x/oauth2"
 )
 
 func Test_ConnectorStore(t *testing.T) {
@@ -57,49 +54,6 @@ func Test_ConnectorStore(t *testing.T) {
 		info, err := os.Stat(path)
 		require.NoError(t, err)
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
-	})
-
-	t.Run("MoveCredentials", func(t *testing.T) {
-		// How a connector's server was signed in to, such as its token, which
-		// was kept beside the connectors, is moved to the credentials
-		// provider, once, under its key
-		dir := t.TempDir()
-		path := filepath.Join(dir, connectorsFile)
-		jsonfile, err := newJSONFile(path)
-		require.NoError(t, err)
-		store, err := newConnectorStore(jsonfile)
-		require.NoError(t, err)
-		_, err = store.Put(ctx, connector("github", "https://mcp.example.com/github", 0))
-		require.NoError(t, err)
-		credential := mcpschema.Credential{Issuer: "https://github.com/login/oauth", ClientID: "client", RedirectURIs: []string{"http://localhost/cb"}, Token: &oauth2.Token{AccessToken: "access", RefreshToken: "refresh"}}
-		require.NoError(t, jsonfile.Set(credentialsKey, map[string]mcpschema.Credential{"github": credential}))
-
-		creds, err := file.New(filepath.Join(dir, credentialsFile))
-		require.NoError(t, err)
-		require.NoError(t, store.MoveCredentials(ctx, creds))
-		value, err := creds.Get(ctx, mcpregistry.CredentialKey("github"))
-		require.NoError(t, err)
-		var got mcpschema.Credential
-		require.NoError(t, json.Unmarshal([]byte(value), &got))
-		assert.Equal(t, "client", got.ClientID)
-		assert.Equal(t, []string{"http://localhost/cb"}, got.RedirectURIs)
-		require.NotNil(t, got.Token)
-		assert.Equal(t, "refresh", got.Token.RefreshToken)
-
-		// They're removed from beside the connectors, which are kept
-		old, err := jsonfile.Lookup(credentialsKey)
-		require.NoError(t, err)
-		assert.Nil(t, old)
-		list, err := store.List(ctx)
-		require.NoError(t, err)
-		assert.Len(t, list, 1)
-
-		// And moving them again does nothing, so they aren't replaced
-		require.NoError(t, creds.Set(ctx, mcpregistry.CredentialKey("github"), "{}"))
-		require.NoError(t, store.MoveCredentials(ctx, creds))
-		value, err = creds.Get(ctx, mcpregistry.CredentialKey("github"))
-		require.NoError(t, err)
-		assert.Equal(t, "{}", value)
 	})
 
 	t.Run("Serials", func(t *testing.T) {

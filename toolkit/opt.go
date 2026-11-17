@@ -2,9 +2,9 @@ package toolkit
 
 import (
 	// Packages
+	env "github.com/mutablelogic/go-auth/credential/env"
 	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
-	env "github.com/mutablelogic/go-llm/auth/credentials/env"
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	trace "go.opentelemetry.io/otel/trace"
 )
