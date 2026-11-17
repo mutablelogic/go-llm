@@ -35,6 +35,8 @@ import (
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 	llmtools "github.com/mutablelogic/go-llm/toolkit/llm"
+	workspace "github.com/mutablelogic/go-llm/workspace"
+	workspacecmd "github.com/mutablelogic/go-llm/workspace/cmd"
 	server "github.com/mutablelogic/go-server"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
@@ -70,6 +72,7 @@ type RunServer struct {
 	Heartbeat   heartbeatcmd.Flags       `embed:"" prefix:"heartbeat."`
 	Resource    resourcecmd.Flags        `embed:"" prefix:"resource."`
 	Connector   mcpcmd.Flags             `embed:"" prefix:"mcp."`
+	Workspace   workspacecmd.Flags       `embed:"" prefix:"workspace."`
 	Frontend    frontendcmd.Flags        `embed:""`
 	servercmd.RunServer
 }
@@ -182,18 +185,27 @@ func (runner *RunServer) Run(ctx server.Cmd) error {
 			// own, and the heartbeats, which are for sessions which exist
 			return runner.Resource.WithResources(ctx, &runner.RunServer, resources, func(res *resource.Manager) error {
 				return runner.Heartbeat.WithHeartbeats(ctx, &runner.RunServer, heartbeats, func(h *heartbeat.Heartbeats) error {
-					return runner.withToolkit(ctx, b, mem, h, res, &events, build, store, connectorStore, creds, sessions, agents, outcomes)
+					return runner.withWorkspace(ctx, b, mem, h, res, &events, build, store, connectorStore, creds, sessions, agents, outcomes)
 				}, heartbeat.WithBroadcaster(b), heartbeat.WithZone(zone), heartbeat.WithRun(run), heartbeat.WithSessions(sessionExists))
 			}, resource.WithBroadcaster(b), resource.WithSessions(sessionExists))
 		}, memory.WithBroadcaster(b))
 	})
 }
 
+// withWorkspace runs the server, with the registry of workspaces, whose
+// changes are published to the broadcaster, which the toolkit has, so the
+// namespaces which are workspaces, such as MCP connectors', are in it
+func (runner *RunServer) withWorkspace(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, connectorStore *connectorStore, creds credential.CredentialProvider, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
+	return runner.Workspace.WithWorkspaces(ctx, &runner.RunServer, func(workspaces *workspace.Registry) error {
+		return runner.withToolkit(ctx, b, workspaces, mem, h, res, events, build, store, connectorStore, creds, sessions, agents, outcomes)
+	}, workspace.WithBroadcaster(b))
+}
+
 // withToolkit runs the server, with a toolkit, which has the memory, and
 // the heartbeats, as well as the tools whose credentials are set, and a
 // registry, with the stores, which runs the heartbeats which fire, once
 // it's set to, and fires them
-func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, connectorStore *connectorStore, creds credential.CredentialProvider, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
+func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster, workspaces *workspace.Registry, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, connectorStore *connectorStore, creds credential.CredentialProvider, sessions *sessionStore, agents *agentStore, outcomes *eventStore) error {
 	return runner.Toolkit.WithToolkit(ctx, &runner.RunServer, func(tools *toolkit.Toolkit) error {
 		// The memory, whose system prompt has what's remembered, and whose
 		// tools remember it, and which, when a model can call them, has it
@@ -282,7 +294,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
 			return runner.withRegistry(ctx, b, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies, creds)
 		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentialsProvider(creds), mcpregistry.WithToolkit(tools), mcpregistry.WithAgents(runAgentTool(events)))
-	}, toolkit.WithBroadcaster(b), toolkit.WithCredentialsProvider(creds))
+	}, toolkit.WithBroadcaster(b), toolkit.WithCredentialsProvider(creds), toolkit.WithWorkspaces(workspaces))
 }
 
 // runAgentTool returns the function which runs a connector's MCP prompt,
