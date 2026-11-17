@@ -49,7 +49,7 @@ type ListWorkspaceRequest struct {
 // ReadWorkspaceRequest is the input of the workspace's read tool
 type ReadWorkspaceRequest struct {
 	URI    string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
-	Format string `json:"format,omitempty" enum:"raw,markdown" help:"Without it, as its type is: an image, audio, or video, as it is, and anything else as Markdown, or as it is, when it has none. raw, for the resource as it is, up to 10 MiB, or markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
+	Format string `json:"format,omitempty" enum:"raw,markdown" help:"Without it, as its type is: an image, audio, or video, as raw, and anything else as markdown, or raw, when it has none. raw, for the resource as it is, up to 10 MiB, as a file, whose link other tools are given, such as llm:transcribe, or markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
 	Offset uint64 `json:"offset,omitempty" help:"As Markdown, the byte of its Markdown the part starts at, which is a part's next"`
 	Limit  uint64 `json:"limit,omitempty" help:"As Markdown, the most bytes of its Markdown which are read"`
 }
@@ -239,9 +239,9 @@ func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 	}
 	switch format := strings.ToLower(strings.TrimSpace(req.Format)); format {
 	case "":
-		// As its type is: an image, audio, or video, as it is, which a model
-		// sees, or hears, and otherwise its text, as Markdown, or, when it
-		// has none, as it is
+		// As its type is: an image, audio, or video, as it is, as a file,
+		// whose link other tools are given, and otherwise its text, as
+		// Markdown, or, when it has none, as it is
 		if media(resource.Type()) {
 			return readRaw(ctx, req.URI, resource)
 		}

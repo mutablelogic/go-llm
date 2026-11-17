@@ -428,10 +428,17 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 	// all of its types, as an MCP server which isn't a workspace's does
 	result = &schema.ListResponse{Body: []schema.ResourceMeta{}}
 	var root string
+	var count *uint64
+	filtered := false
 	for pages := 0; ; pages++ {
 		var list *schema.ListResponse
+		// A page which is resumed is fetched with the limit it was, so its
+		// entries are where they were, whatever the limit is now
 		pageReq := req
 		pageReq.Cursor = page.Cursor
+		if page.Skip > 0 {
+			pageReq.Limit = page.Limit
+		}
 		if err := r.With(name, func(ws Workspace) error {
 			var err error
 			list, err = ws.List(ctx, pageReq)
@@ -447,19 +454,22 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 			}
 			if req.Type == "" || list.Body[i].Type == req.Type {
 				result.Body = append(result.Body, list.Body[i])
+			} else {
+				filtered = true
 			}
 		}
 		switch {
 		case i < len(list.Body):
-			// The rest of this page is next
+			// The rest of this page is next, which is fetched with its limit
 			page = listCursorOf(name, req, page.Cursor, i)
+			page.Limit = pageReq.Limit
 		case list.Next != "":
 			page = listCursorOf(name, req, list.Next, 0)
 		default:
 			page = listCursor{}
 		}
-		if result.Count == nil && list.Count != nil {
-			result.Count = list.Count
+		if count == nil && list.Count != nil {
+			count = list.Count
 		}
 		if page.Workspace == "" || req.Limit == 0 || uint(len(result.Body)) == req.Limit || pages >= maxListPages {
 			break
@@ -467,6 +477,12 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 	}
 	if page.Workspace != "" {
 		result.Next = page.String()
+	}
+
+	// How many there are, unless those of another type were left out, as
+	// the workspace's count is of them too
+	if !filtered {
+		result.Count = count
 	}
 
 	// Their URIs, and their artwork's, are the workspace's, and each has a
@@ -514,6 +530,7 @@ type listCursor struct {
 	Type      string `json:"t,omitempty"`
 	Cursor    string `json:"c,omitempty"`
 	Skip      int    `json:"s,omitempty"`
+	Limit     uint   `json:"l,omitempty"` // The limit of the page, which is resumed
 }
 
 // listCursorOf returns the cursor of the listing, of the workspace with the
