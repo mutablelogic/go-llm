@@ -29,6 +29,24 @@ export interface ResourceMeta {
     type?: string;
     size?: number;
     modified?: string;
+    meta?: ResourceMetaValue[];
+    artwork?: Artwork[];
+}
+
+// ResourceMetaValue is a value of a resource's metadata, by its namespace
+// and key, such as exif:DateTimeOriginal, as text, and as JSON
+export interface ResourceMetaValue {
+    ns: string;
+    key: string;
+    text: string;
+    value?: unknown;
+}
+
+// Artwork is an image of a resource, such as its cover, or thumbnail
+export interface Artwork {
+    key: string;
+    type?: string;
+    uri: string;
 }
 
 // ResourceList is a page of a folder's folders, and resources, and the

@@ -134,6 +134,75 @@
             }
         }
 
+        /* A file, in its panel: a preview, what it is, its metadata, and
+           its artwork */
+        .workspace-file .preview {
+            display: block;
+            max-width: 100%;
+            margin-bottom: 1rem;
+        }
+
+        .workspace-file h3 {
+            margin: 1.5rem 0 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+
+        .workspace-file dl {
+            display: grid;
+            grid-template-columns: max-content minmax(0, 1fr);
+            gap: 0.5rem 1rem;
+            margin: 0;
+            font-size: 0.875rem;
+        }
+
+        .workspace-file dt {
+            color: var(--cds-text-secondary, #525252);
+        }
+
+        .workspace-file dd {
+            margin: 0;
+            overflow-wrap: anywhere;
+        }
+
+        .workspace-file .preview-loading {
+            margin-top: 1.5rem;
+        }
+
+        .workspace-file .preview-markdown {
+            display: block;
+            padding: 1rem;
+            background: var(--cds-layer-02, #fff);
+        }
+
+        .workspace-file .preview-more {
+            margin: 0.5rem 0 0;
+            color: var(--cds-text-secondary, #525252);
+            font-size: 0.75rem;
+        }
+
+        .workspace-file .artwork {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .workspace-file figure {
+            margin: 0;
+            max-width: 10rem;
+        }
+
+        .workspace-file figure img {
+            display: block;
+            max-width: 100%;
+        }
+
+        .workspace-file figcaption {
+            margin-top: 0.25rem;
+            color: var(--cds-text-secondary, #525252);
+            font-size: 0.75rem;
+        }
+
         .workspace-tags {
             display: inline-flex;
             gap: 0.25rem;

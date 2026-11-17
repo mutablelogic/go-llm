@@ -1,6 +1,6 @@
 // The workspaces' API
 
-import { config, request } from './client';
+import { ApiError, config, request } from './client';
 import type { ResourceList, ResourceMeta, Workspace, WorkspaceList } from '../schema/workspace';
 
 // listWorkspaces returns the workspaces, in order of their names
@@ -48,6 +48,34 @@ export async function listFolder(name: string, path: string, most: number, optio
         cursor = page.next;
     } while (cursor && items.length < most);
     return { items, more: more || !!cursor };
+}
+
+// MarkdownPart is the first part of a resource, as Markdown: its body,
+// without its front matter, and whether it has more
+export interface MarkdownPart {
+    body: string;
+    more: boolean;
+}
+
+// readMarkdown returns the first part of the workspace's resource, as
+// Markdown, of at most the limit, in bytes, or undefined, when it has none,
+// such as audio. Its front matter, which says the offset of its next part,
+// when it has one, is left out.
+export async function readMarkdown(name: string, uri: string, limit: number, signal?: AbortSignal): Promise<MarkdownPart | undefined> {
+    const { prefix } = await config();
+    const query = new URLSearchParams({ uri, format: 'markdown', limit: String(limit) });
+    const response = await fetch(`${prefix}/llm/workspace/${encodeURIComponent(name)}/content?${query}`, { headers: { Accept: 'text/markdown' }, signal });
+    if (response.status === 501) {
+        return undefined;
+    } else if (!response.ok) {
+        throw new ApiError(response.status, response.statusText);
+    }
+    const text = await response.text();
+    const match = /^---\n([\s\S]*?)\n---\n?/.exec(text);
+    return {
+        body: match ? text.slice(match[0].length) : text,
+        more: !!match && /^next:/m.test(match[1]),
+    };
 }
 
 // contentURL returns the URL of the content of the workspace's resource,

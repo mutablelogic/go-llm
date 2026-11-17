@@ -9,15 +9,20 @@ import type { ListController } from '@mutablelogic/go-server/list';
 import '@mutablelogic/go-server/list/view';
 import type { Column } from '@mutablelogic/go-server/list/view';
 import '@mutablelogic/go-server/page/view';
+import type { PanelController } from '@mutablelogic/go-server/panel';
+import '@mutablelogic/go-server/panel/view';
 import Folder16 from '@carbon/icons/es/folder/16.js';
 import Document16 from '@carbon/icons/es/document/16.js';
 import FolderDetails32 from '@carbon/icons/es/folder--details/32.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import '@carbon/web-components/es/components/tag/index.js';
 import '../component/folder-tree';
+import '../component/markdown-view';
+import '@carbon/web-components/es/components/loading/index.js';
 import { formatSize, formatWhen } from '../format';
 import { routeHref } from '../router';
 import { isFolder, type ResourceMeta, type Workspace } from '../schema/workspace';
+import type { MarkdownPart } from '../api/workspace';
 
 @customElement('llm-workspace-page')
 export class WorkspacePage extends LitElement {
@@ -49,6 +54,13 @@ export class WorkspacePage extends LitElement {
 
     @property({ type: Boolean, reflect: true })
     tree = false;
+
+    // The panel of a file, and the file it shows
+    @property({ attribute: false })
+    panel?: PanelController<FileDetail>;
+
+    @property({ attribute: false })
+    file?: FileDetail;
 
     // The folder's folders, and resources
     @property({ attribute: false })
@@ -102,6 +114,53 @@ export class WorkspacePage extends LitElement {
                         empty="This workspace has no resources"></gs-table>
                 </div>
             `}
+            <gs-panel .controller=${this.panel}>${this.fileBody()}</gs-panel>
+        `;
+    }
+
+    // fileBody renders the file which the panel shows: a preview, when it's
+    // an image, what it is, its metadata, and its artwork
+    private fileBody(): unknown {
+        const file = this.file;
+        if (!file) {
+            return nothing;
+        }
+        const { item, url, artwork, loading, markdown } = file;
+        // Its title, and type, are the panel's header, so its name is only
+        // said when its title is another
+        const details: [string, unknown][] = [
+            ['Name', item.title && item.title !== item.name ? item.name : undefined],
+            ['Path', item.path],
+            ['Size', item.size === undefined ? undefined : formatSize(item.size)],
+            ['Modified', item.modified ? formatWhen(item.modified) : undefined],
+            ['URI', item.uri],
+        ];
+        return html`
+            <div class="workspace-file">
+                ${item.type?.startsWith('image/') ? html`<img class="preview" src=${url} alt=${item.title || item.name}>` : nothing}
+                ${item.description ? html`<p>${item.description}</p>` : nothing}
+                <dl>
+                    ${details.filter(([, value]) => value !== undefined && value !== '').map(([term, value]) => html`<dt>${term}</dt><dd>${value}</dd>`)}
+                </dl>
+                ${item.meta?.length ? html`
+                    <h3>Metadata</h3>
+                    <dl>
+                        ${item.meta.map((meta) => html`<dt>${meta.ns}:${meta.key}</dt><dd>${meta.text}</dd>`)}
+                    </dl>
+                ` : nothing}
+                ${loading ? html`<cds-loading small inactive-text="Loading" class="preview-loading"></cds-loading>` : nothing}
+                ${markdown?.body.trim() ? html`
+                    <h3>Preview</h3>
+                    <llm-markdown-view class="preview-markdown" .text=${markdown.body}></llm-markdown-view>
+                    ${markdown.more ? html`<p class="preview-more">The rest isn't shown. Open the file for all of it.</p>` : nothing}
+                ` : nothing}
+                ${artwork.length ? html`
+                    <h3>Artwork</h3>
+                    <div class="artwork">
+                        ${artwork.map((art) => html`<figure><img src=${art.url} alt=${art.key}><figcaption>${art.key}</figcaption></figure>`)}
+                    </div>
+                ` : nothing}
+            </div>
         `;
     }
 
@@ -134,6 +193,16 @@ export class WorkspacePage extends LitElement {
             </span>
         `;
     }
+}
+
+// FileDetail is a file which the panel shows, with the URLs of its content,
+// and its artwork
+export interface FileDetail {
+    item: ResourceMeta;
+    url: string;
+    artwork: { key: string; type?: string; url: string }[];
+    loading?: boolean;
+    markdown?: MarkdownPart;
 }
 
 declare global {
