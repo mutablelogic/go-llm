@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -243,47 +244,34 @@ func (e ending) Watch(ctx context.Context, ch chan<- schema.Change) error {
 	}
 }
 
-// running is a workspace which says when it runs, and stops
-type running struct {
-	empty
-	started, stopped chan string
-}
-
-func (w running) Run(ctx context.Context, logger *slog.Logger) error {
-	w.started <- "run"
-	<-ctx.Done()
-	w.stopped <- "stop"
-	return nil
-}
-
 func Test_Run(t *testing.T) {
-	// A Runner runs while the registry does, from when it's added, until
-	// it's removed, and a workspace which is added, or removed, is logged
+	// Run logs the workspaces which are added, and removed, as they're
+	// published, until it's cancelled
 	var log safeBuffer
 	logger := slog.New(slog.NewTextHandler(&log, nil))
-	r, err := workspace.New()
+	b := broadcaster.New()
+	r, err := workspace.New(workspace.WithBroadcaster(b))
 	require.NoError(t, err)
-	before := running{started: make(chan string, 1), stopped: make(chan string, 1)}
-	require.NoError(t, r.Add("before", before))
+	defer r.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
+	assert.False(t, r.Running())
 	go func() { done <- r.Run(ctx, logger) }()
-	assert.Equal(t, "run", <-before.started, "one added before it runs")
-
-	after := running{started: make(chan string, 1), stopped: make(chan string, 1)}
-	require.NoError(t, r.Add("after", after))
-	assert.Equal(t, "run", <-after.started, "one added as it runs")
-	_, err = r.Remove("after")
-	require.NoError(t, err)
-	assert.Equal(t, "stop", <-after.stopped, "once it's removed")
+	require.Eventually(t, r.Running, 5*time.Second, time.Millisecond)
 	assert.ErrorIs(t, r.Run(context.Background(), logger), llm.ErrConflict, "it's running")
+
+	// Once it's watching, which it is, soon after it's running
+	require.Eventually(t, func() bool {
+		require.NoError(t, r.Add("notes", empty{}))
+		_, err := r.Remove("notes")
+		require.NoError(t, err)
+		return strings.Contains(log.String(), `msg="workspace removed" workspace=notes`)
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.Contains(t, log.String(), `msg="workspace added" workspace=notes`)
 
 	cancel()
 	require.NoError(t, <-done)
-	assert.Equal(t, "stop", <-before.stopped, "once it stops")
-	assert.Contains(t, log.String(), `msg="workspace added" workspace=before`)
-	assert.Contains(t, log.String(), `msg="workspace added" workspace=after`)
-	assert.Contains(t, log.String(), `msg="workspace removed" workspace=after`)
+	assert.False(t, r.Running())
 }
 
 // safeBuffer is a buffer which is written, and read, concurrently

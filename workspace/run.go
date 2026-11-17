@@ -2,83 +2,82 @@ package workspace
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
-	"maps"
-	"slices"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Run runs the workspaces which are Runners, as they're added, until
-// they're removed, or the context is cancelled, when it waits for them to
-// stop, and returns nil. A workspace which fails is logged, with the logger,
-// rather than stopping the others. Returns ErrConflict when it's running
-// already.
+// Run logs the registry's changes, with the logger, as they're published to
+// its broadcaster: the workspaces which are added, or removed, and their
+// folders, and resources, which change, until the context is cancelled, when
+// it returns nil. Without a broadcaster, it waits until then. Returns
+// ErrConflict when it's running already.
 func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	r.mu.Lock()
-	if r.running != nil {
-		r.mu.Unlock()
+	if !r.running.CompareAndSwap(false, true) {
 		return llm.ErrConflict.With("workspaces are running already")
 	}
-	r.running, r.logger = ctx, logger
-	for _, name := range slices.Sorted(maps.Keys(r.workspaces)) {
-		r.log("workspace added", name, r.workspaces[name])
-		r.start(name, r.workspaces[name])
-	}
-	r.mu.Unlock()
+	defer r.running.Store(false)
 
-	// Stop them, once it's cancelled
-	<-ctx.Done()
-	r.mu.Lock()
-	for name, cancel := range r.runs {
-		cancel()
-		delete(r.runs, name)
+	// Without a broadcaster, there's nothing to log
+	if r.broadcaster == nil {
+		<-ctx.Done()
+		return nil
 	}
-	r.running, r.logger = nil, nil
-	r.mu.Unlock()
-	r.wg.Wait()
-	return nil
+
+	// Log the registry's events, until it's cancelled, or the broadcaster
+	// stops
+	ch := make(chan eventschema.Event, 16)
+	done, err := r.broadcaster.Watch(ctx, ch)
+	if err != nil {
+		return err
+	}
+	for {
+		select {
+		case event := <-ch:
+			if event.Schema == EventSchema {
+				r.log(ctx, logger, event)
+			}
+		case err := <-done:
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+// Running returns true while the registry runs, once Run, which is started
+// in a goroutine, has started, and until it stops
+func (r *Registry) Running() bool {
+	return r.running.Load()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE METHODS
 
-// start runs the workspace, when it's a Runner, and the registry is
-// running, until its run is cancelled, and logs it, when it fails. The
-// caller holds the lock.
-func (r *Registry) start(name string, ws Workspace) {
-	runner, ok := ws.(Runner)
-	if !ok || r.running == nil {
-		return
-	}
-	ctx, cancel := context.WithCancel(r.running)
-	r.runs[name] = cancel
-	logger := r.logger.With("workspace", name)
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-		if err := runner.Run(ctx, logger); err != nil && ctx.Err() == nil {
-			logger.ErrorContext(ctx, "workspace stopped", "error", err.Error())
+// log logs the registry's event: a workspace which is added, or removed, or
+// a folder, or resource, of one, which changes
+func (r *Registry) log(ctx context.Context, logger *slog.Logger, event eventschema.Event) {
+	switch event.Table {
+	case WorkspaceTable:
+		switch event.Action {
+		case eventschema.EventCreate:
+			logger.InfoContext(ctx, "workspace added", "workspace", event.Row)
+		case eventschema.EventDelete:
+			logger.InfoContext(ctx, "workspace removed", "workspace", event.Row)
 		}
-	}()
-}
-
-// log logs that the workspace with the name was added, or removed, while
-// the registry runs, with what it is: whether it reads, watches, or runs,
-// and whether it's available now. The caller holds the lock.
-func (r *Registry) log(msg, name string, ws Workspace) {
-	if r.logger == nil {
-		return
+	case ResourceTable:
+		var data ResourceEvent
+		_ = json.Unmarshal(event.Data, &data)
+		logger.DebugContext(ctx, "workspace changed", "workspace", event.Row, "action", string(event.Action), "uri", data.URI)
 	}
-	_, reader := ws.(Reader)
-	_, watcher := ws.(Watcher)
-	_, runner := ws.(Runner)
-	r.logger.Info(msg, "workspace", name, "read", reader, "watch", watcher, "run", runner, "available", available(ws))
 }

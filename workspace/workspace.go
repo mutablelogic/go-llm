@@ -5,7 +5,6 @@ package workspace
 
 import (
 	"context"
-	"log/slog"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
@@ -74,15 +73,4 @@ type Subscriber interface {
 
 	// Unsubscribe stops asking for the resource with the URI's updates
 	Unsubscribe(ctx context.Context, uri string) error
-}
-
-// Runner is a workspace which works while its registry runs, such as one
-// which loads its folders as they're needed, or keeps them up to date
-type Runner interface {
-	Workspace
-
-	// Run works until the context is cancelled, when it returns nil, as the
-	// registry stops running, or the workspace is removed, or it fails,
-	// which is logged, with the logger
-	Run(ctx context.Context, logger *slog.Logger) error
 }

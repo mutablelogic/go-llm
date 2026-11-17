@@ -366,8 +366,7 @@ func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster
 			return connectors.Run(runCtx, ctx.Logger())
 		})
 		group.Go(func() error {
-			// The workspaces which work, such as loading their folders, do,
-			// as they're added, until they're removed
+			// The workspaces which are added, and removed, are logged
 			return workspaces.Run(runCtx, ctx.Logger())
 		})
 		group.Go(func() error {

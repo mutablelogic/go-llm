@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"iter"
-	"log/slog"
 	"maps"
 	"reflect"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	// Packages
@@ -36,12 +36,8 @@ type Registry struct {
 	cancel  context.CancelFunc
 	watches map[string]context.CancelFunc
 
-	// While it runs, its context, and logger, and the cancels of the runs
-	// of the workspaces which are Runners, by name, and those running
-	running context.Context
-	logger  *slog.Logger
-	runs    map[string]context.CancelFunc
-	wg      sync.WaitGroup
+	// Whether it runs
+	running atomic.Bool
 }
 
 // ResourceEvent is the data of an event of a workspace's folders, and
@@ -78,7 +74,7 @@ const (
 // New returns a registry, with no workspaces, with the options, such as
 // the broadcaster its changes are published to, with WithBroadcaster
 func New(opts ...Opt) (*Registry, error) {
-	r := &Registry{workspaces: make(map[string]Workspace), watches: make(map[string]context.CancelFunc), runs: make(map[string]context.CancelFunc)}
+	r := &Registry{workspaces: make(map[string]Workspace), watches: make(map[string]context.CancelFunc)}
 	if err := r.opt.apply(opts); err != nil {
 		return nil, err
 	}
@@ -125,10 +121,6 @@ func (r *Registry) Add(name string, ws Workspace) error {
 		}
 	}
 	r.publish(eventschema.EventCreate, WorkspaceTable, name, nil)
-
-	// Run it, when it's a Runner, and the registry is running
-	r.log("workspace added", name, ws)
-	r.start(name, ws)
 	return nil
 }
 
@@ -158,14 +150,9 @@ func (r *Registry) RemoveIf(name string, ws Workspace) bool {
 }
 
 // remove removes the workspace with the name, stops watching it, and
-// running it, and publishes that it was removed. The caller holds the lock.
+// publishes that it was removed. The caller holds the lock.
 func (r *Registry) remove(name string) {
-	r.log("workspace removed", name, r.workspaces[name])
 	delete(r.workspaces, name)
-	if cancel, exists := r.runs[name]; exists {
-		cancel()
-		delete(r.runs, name)
-	}
 	if cancel, exists := r.watches[name]; exists {
 		cancel()
 		delete(r.watches, name)
