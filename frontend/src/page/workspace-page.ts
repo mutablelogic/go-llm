@@ -14,7 +14,7 @@ import Document16 from '@carbon/icons/es/document/16.js';
 import FolderDetails32 from '@carbon/icons/es/folder--details/32.js';
 import iconLoader from '@carbon/web-components/es/globals/internal/icon-loader.js';
 import '@carbon/web-components/es/components/tag/index.js';
-import '@carbon/web-components/es/components/tree-view/index.js';
+import '../component/folder-tree';
 import { formatSize, formatWhen } from '../format';
 import { routeHref } from '../router';
 import { isFolder, type ResourceMeta, type Workspace } from '../schema/workspace';
@@ -86,9 +86,8 @@ export class WorkspacePage extends LitElement {
             ` : this.tree ? html`
                 <div class="workspace-split">
                     <nav class="workspace-tree" aria-label="Folders">
-                        <cds-tree-view hide-label label="Folders" size="sm" @cds-tree-node-selected=${this.selected} @cds-tree-node-toggled=${this.toggled}>
-                            ${this.node(workspace?.title || this.name, '')}
-                        </cds-tree-view>
+                        <llm-folder-tree .label=${workspace?.title || this.name} .folders=${this.folders} .selected=${this.path.join('/')}
+                            @llm-folder-select=${this.selected} @llm-folder-expand=${this.expanded}></llm-folder-tree>
                     </nav>
                     <div class="workspace-files">
                         <gs-table .controller=${this.controller} .columns=${this.columns}
@@ -106,39 +105,17 @@ export class WorkspacePage extends LitElement {
         `;
     }
 
-    // node renders a folder of the tree, and the folders in it, once
-    // they're loaded, or else a placeholder, so it can be expanded, which
-    // loads them. It's selected when it's shown, and expanded when it, or a
-    // folder in it, is.
-    private node(name: string, path: string): unknown {
-        const shown = this.path.join('/');
-        const open = path === '' || shown === path || shown.startsWith(path + '/');
-        const children = this.folders.get(path);
-        return html`
-            <cds-tree-node label=${name} title=${name} data-path=${path} ?selected=${shown === path} ?active=${shown === path} ?is-expanded=${open}>
-                ${iconLoader(Folder16, { slot: 'icon' })}
-                ${children === undefined
-                    ? html`<cds-tree-node label="Loading…" disabled></cds-tree-node>`
-                    : sortedFolders(children).map((folder) => this.node(folder.title || folder.name, folderPath(folder, path)))}
-            </cds-tree-node>
-        `;
-    }
-
-    // toggled loads the folders of a folder which is expanded
-    private readonly toggled = (event: Event) => {
-        const { expanded } = (event as CustomEvent<{ expanded?: boolean }>).detail ?? {};
-        const path = (event.target as HTMLElement | null)?.closest('cds-tree-node')?.getAttribute('data-path');
-        if (expanded && path !== null && path !== undefined) {
-            this.expand?.(path);
+    // selected shows the folder which is selected in the tree
+    private readonly selected = (event: Event) => {
+        const path = (event as CustomEvent<string>).detail;
+        if (path !== this.path.join('/')) {
+            location.hash = routeHref('workspace', this.name, ...(path ? path.split('/') : []));
         }
     };
 
-    // selected shows the folder of the tree which is selected
-    private readonly selected = (event: Event) => {
-        const path = (event.target as HTMLElement | null)?.closest('cds-tree-node')?.getAttribute('data-path');
-        if (path !== null && path !== undefined && path !== this.path.join('/')) {
-            location.hash = routeHref('workspace', this.name, ...(path ? path.split('/') : []));
-        }
+    // expanded loads the folders of a folder which is expanded in the tree
+    private readonly expanded = (event: Event) => {
+        this.expand?.((event as CustomEvent<string>).detail);
     };
 
     // details are what the workspace has, and what it does, as tags: whether
@@ -157,18 +134,6 @@ export class WorkspacePage extends LitElement {
             </span>
         `;
     }
-}
-
-// sortedFolders returns the folders, in order of their names
-function sortedFolders(folders: ResourceMeta[]): ResourceMeta[] {
-    return [...folders].sort((a, b) => (a.title || a.name).localeCompare(b.title || b.name, undefined, { numeric: true, sensitivity: 'base' }));
-}
-
-// folderPath returns the folder's path, under the workspace's top, or, when
-// it hasn't one, its name, in the folder it's in
-function folderPath(folder: ResourceMeta, parent: string): string {
-    const path = (folder.path ?? '').replace(/^\/+|\/+$/g, '');
-    return path || (parent ? `${parent}/${folder.name}` : folder.name);
 }
 
 declare global {
