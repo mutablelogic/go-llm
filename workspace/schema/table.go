@@ -21,15 +21,15 @@ func (r ListRequest) String() string   { return types.Stringify(r) }
 // TABLE OUTPUT
 
 func (Workspace) Header() []string {
-	return []string{"Workspace", "Title", "Version", "Read", "Watch", "Description"}
+	return []string{"Workspace", "Title", "Version", "Features", "Description"}
 }
 
 func (Workspace) Width(int) int {
 	return 0
 }
 
-// Cell returns the workspace's name, title, version, whether its resources
-// are read, and its changes are watched, and its description
+// Cell returns the workspace's name, title, version, features, and its
+// description
 func (w Workspace) Cell(col int) tui.CellText {
 	switch col {
 	case 0:
@@ -39,13 +39,25 @@ func (w Workspace) Cell(col int) tui.CellText {
 	case 2:
 		return w.Version
 	case 3:
-		return yes(w.Read)
+		return strings.Join(w.Features(), ", ")
 	case 4:
-		return yes(w.Watch)
-	case 5:
 		return w.Description
 	}
 	return ""
+}
+
+// Features returns what the workspace does, besides listing its folders and
+// resources: read, when its resources' content is read, by their URIs, and
+// watch, when its changes are followed, and published, now
+func (w Workspace) Features() []string {
+	var result []string
+	if w.Read {
+		result = append(result, "read")
+	}
+	if w.Watch {
+		result = append(result, "watch")
+	}
+	return result
 }
 
 func (ResourceMeta) Header() []string {
@@ -86,17 +98,6 @@ func (r ResourceMeta) Cell(col int) tui.CellText {
 		return r.Modified.Local().Format("2006-01-02 15:04")
 	case 4:
 		return r.URI
-	}
-	return ""
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// PRIVATE FUNCTIONS
-
-// yes returns "yes", when it's true, or nothing
-func yes(v bool) string {
-	if v {
-		return "yes"
 	}
 	return ""
 }

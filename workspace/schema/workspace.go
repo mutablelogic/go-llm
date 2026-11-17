@@ -10,8 +10,8 @@ type Workspace struct {
 	Title       string `json:"title,omitempty" help:"Title of the workspace, such as its MCP server's"`
 	Description string `json:"description,omitempty" help:"What the workspace has, as its namespace says"`
 	Version     string `json:"version,omitempty" help:"Version of the workspace, such as its MCP server's"`
-	Read        bool   `json:"read,omitempty" help:"Whether its resources are read"`
-	Watch       bool   `json:"watch,omitempty" help:"Whether its changes are watched"`
+	Read        bool   `json:"read,omitempty" help:"Whether its resources' content is read, by their URIs, rather than only listed"`
+	Watch       bool   `json:"watch,omitempty" help:"Whether its changes are followed, and published as events, now"`
 }
 
 // WorkspaceList is the workspaces, in order of their names, and how many
