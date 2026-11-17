@@ -294,6 +294,13 @@ func media(contentType string) bool {
 // when it's larger, which says what's read instead.
 func readRaw(ctx context.Context, uri string, resource llm.Resource, offset, limit uint64) (any, error) {
 	text := textual(resource.Type())
+
+	// When the tool's resources are kept, as they are in a chat, a file
+	// which isn't text is linked to, by its URI, which is a workspace's,
+	// rather than read, whatever its size
+	if !text && storeFrom(ctx) != nil {
+		return resource, nil
+	}
 	if text {
 		if part, err := readText(ctx, resource, offset, limit); err != nil || part != nil {
 			return part, err

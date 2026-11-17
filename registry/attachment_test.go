@@ -3,6 +3,7 @@ package registry_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -706,4 +707,35 @@ func Test_StreamedAudio(t *testing.T) {
 			assert.Equal(t, int64(len(content)), length)
 		})
 	}
+}
+
+// workspaceFile is a file of a workspace, by its URI, which is large
+type workspaceFile struct{}
+
+func (workspaceFile) URI() string          { return "resource://files/Movies/Blade%20Runner.mkv" }
+func (workspaceFile) Name() string         { return "Blade Runner.mkv" }
+func (workspaceFile) Description() string  { return "" }
+func (workspaceFile) Type() string         { return "video/x-matroska" }
+func (workspaceFile) ContentLength() int64 { return 10 << 30 }
+func (workspaceFile) Read(context.Context) (llm.ReadFunc, error) {
+	return nil, errors.New("a workspace's file isn't read to be kept")
+}
+
+func Test_KeepWorkspaceFile(t *testing.T) {
+	// A workspace's file is linked to, by its URI, rather than copied,
+	// whatever its size
+	ctx := context.Background()
+	manager, err := resourcemanager.New(resourcemanager.NewStore())
+	require.NoError(t, err)
+	r, err := registry.New(registry.WithResources(manager))
+	require.NoError(t, err)
+	link, kept, err := r.Keep(ctx, uuid.Nil(), workspaceFile{}, "")
+	require.NoError(t, err)
+	assert.True(t, kept)
+	assert.Equal(t, "resource://files/Movies/Blade%20Runner.mkv", link.URI)
+	assert.Equal(t, int64(10<<30), link.Size)
+	assert.Equal(t, "video/x-matroska", link.Type)
+	list, err := manager.List(ctx, resourceschema.ResourceListRequest{})
+	require.NoError(t, err)
+	assert.Zero(t, list.Count, "nothing is copied")
 }

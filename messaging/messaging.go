@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"slices"
@@ -698,13 +699,26 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 	}
 	var result []Sent
 	var errs error
+	var links []string
 	for _, uri := range out.Files {
 		file, content, err := m.open(ctx, channel.Session, uri)
 		if err != nil {
 			errs = errors.Join(errs, err)
 			continue
 		}
-		content.Close()
+		if content != nil {
+			content.Close()
+		}
+
+		// A file with a link is sent as it, in the text
+		if file.URL != "" {
+			name := file.Name
+			if name == "" {
+				name = file.URL
+			}
+			links = append(links, fmt.Sprintf("[%s](%s)", name, file.URL))
+			continue
+		}
 		// The text is the first file's caption, under it, such as a
 		// picture's, or a voice message's, which the provider sends before
 		// it, when it's too long to be one
@@ -721,7 +735,11 @@ func (m *Messaging) send(ctx context.Context, channel schema.Channel, out Outgoi
 		errs = errors.Join(errs, err)
 	}
 
-	// The text, when none of the files could be opened
+	// The text, when none of the files could be opened, or was sent, and
+	// the links to those which are sent as them
+	if len(links) > 0 {
+		text = strings.TrimSpace(text + "\n\n" + strings.Join(links, "\n"))
+	}
 	if text != "" {
 		sent, err := provider.Send(ctx, channel.Address, text)
 		result = append(result, sent...)

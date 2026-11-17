@@ -25,6 +25,8 @@ import (
 	resource "github.com/mutablelogic/go-llm/resource"
 	resourceschema "github.com/mutablelogic/go-llm/resource/schema"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	workspace "github.com/mutablelogic/go-llm/workspace"
+	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
 	server "github.com/mutablelogic/go-server"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -134,9 +136,15 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 }
 
 // openFile returns the function which opens a session's file, which is one
-// of the resources, by its URI, to send it to the session's channels
-func openFile(res *resource.Manager) messaging.OpenFunc {
+// of the resources, by its URI, or a file of a workspace, to send it to the
+// session's channels. A workspace's file is a link to its content, on the
+// server's public endpoint, when it has one, as it can be larger than a chat
+// takes, such as a film, or else it's opened from its workspace.
+func openFile(res *resource.Manager, workspaces *workspace.Registry, endpoint string) messaging.OpenFunc {
 	return func(ctx context.Context, session uuid.UUID, uri string) (messaging.File, io.ReadCloser, error) {
+		if name, _, ok := workspaceschema.ParseURI(uri); ok && workspaces != nil {
+			return openWorkspaceFile(ctx, workspaces, endpoint, name, uri)
+		}
 		hash, err := resourceschema.ParseURI(uri)
 		if err != nil {
 			return messaging.File{}, nil, err
@@ -147,6 +155,36 @@ func openFile(res *resource.Manager) messaging.OpenFunc {
 		}
 		return messaging.File{URI: r.URI(), Name: r.Name, Type: r.Type, Size: r.Size}, content, nil
 	}
+}
+
+// openWorkspaceFile returns the workspace's file, with the URI, as a link to
+// its content, on the endpoint, when there's one, or else its content,
+// which is read as it's sent
+func openWorkspaceFile(ctx context.Context, workspaces *workspace.Registry, endpoint, name, uri string) (messaging.File, io.ReadCloser, error) {
+	resource, err := workspaces.Resolve(ctx, uri)
+	if err != nil {
+		return messaging.File{}, nil, err
+	}
+	file := messaging.File{URI: uri, Name: resource.Name(), Type: resource.Type()}
+	if size, ok := llm.ContentLength(resource); ok {
+		file.Size = size
+	}
+	if endpoint != "" {
+		file.URL = endpoint + "/llm/workspace/" + url.PathEscape(name) + "/content?" + url.Values{"uri": {uri}}.Encode()
+		return file, nil, nil
+	}
+	read, err := resource.Read(ctx)
+	if err != nil {
+		return messaging.File{}, nil, err
+	}
+	reader, writer := io.Pipe()
+	go func() {
+		writer.CloseWithError(read(ctx, func(r io.Reader) error {
+			_, err := io.Copy(writer, r)
+			return err
+		}))
+	}()
+	return file, reader, nil
 }
 
 // chatMessage returns the message from a channel's chat, as the person's

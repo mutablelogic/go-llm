@@ -84,6 +84,11 @@ type File struct {
 
 	// Size is its size, in bytes
 	Size int64
+
+	// URL is a link to it, such as the server's https endpoint of a file
+	// of a workspace, which is sent in the text, rather than its content,
+	// which isn't opened, as it can be larger than a chat takes
+	URL string
 }
 
 // OpenFunc opens the session's file with the URI, and returns what it is,
