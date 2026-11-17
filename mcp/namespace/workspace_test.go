@@ -122,13 +122,21 @@ func Test_WatchResources(t *testing.T) {
 	assert.Equal(t, listAgain, <-changes, "as it's connected again")
 	updated("connected again")
 
-	// Unsubscribed, it isn't told
+	// Unsubscribed, it isn't told. It can be told to list again, such as by
+	// the server's list changed, as it starts watching, which the SDK says
+	// a moment later, which can be now, on a slow runner.
 	require.NoError(t, ns.Unsubscribe(ctx, uri))
 	source.changes <- schema.Change{Action: eventschema.ChangeUpdate, URI: uri}
-	select {
-	case change := <-changes:
-		t.Fatalf("told of %v, once unsubscribed", change)
-	case <-time.After(100 * time.Millisecond):
+	timeout := time.After(100 * time.Millisecond)
+	for quiet := false; !quiet; {
+		select {
+		case change := <-changes:
+			if change != listAgain {
+				t.Fatalf("told of %v, once unsubscribed", change)
+			}
+		case <-timeout:
+			quiet = true
+		}
 	}
 
 	cancel()
