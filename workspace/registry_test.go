@@ -340,3 +340,35 @@ func Test_Spans(t *testing.T) {
 	assert.Equal(t, "resource://notes/file:///note.md", attrs("llm.workspace.Resolve")["arg.uri"])
 	assert.Equal(t, "file:///note.md", attrs("llm.workspace.Read")["arg.uri"])
 }
+
+func Test_Watched(t *testing.T) {
+	// A workspace is said to be watched only while the registry watches it:
+	// with a broadcaster, until its watch ends
+	watched := func(r *workspace.Registry, name string) bool {
+		t.Helper()
+		ws, err := r.GetWorkspace(context.Background(), name)
+		require.NoError(t, err)
+		return ws.Watch
+	}
+
+	// Without a broadcaster, a Watcher isn't watched
+	r, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("notes", changing{changes: make(chan schema.Change)}))
+	assert.False(t, watched(r, "notes"))
+
+	// With one, it is, until its watch ends, such as when it fails
+	r, err = workspace.New(workspace.WithBroadcaster(broadcaster.New()))
+	require.NoError(t, err)
+	defer r.Close()
+	require.NoError(t, r.Add("notes", changing{changes: make(chan schema.Change)}))
+	assert.True(t, watched(r, "notes"))
+	assert.True(t, r.ListWorkspaces(context.Background()).Body[0].Watch)
+	ending := ending{changes: make(chan schema.Change, 1)}
+	require.NoError(t, r.Add("ending", ending))
+	ending.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///a.md"}
+	require.Eventually(t, func() bool { return !watched(r, "ending") }, 5*time.Second, time.Millisecond)
+	assert.True(t, watched(r, "notes"))
+	require.NoError(t, r.Close())
+	require.Eventually(t, func() bool { return !watched(r, "notes") }, 5*time.Second, time.Millisecond, "once it's closed")
+}
