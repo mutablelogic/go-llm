@@ -6,6 +6,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -108,10 +109,19 @@ func (s *Server) Run(ctx context.Context) error {
 	done := make(chan error, 2)
 	go func() { done <- s.ns.Watch(ctx, ch) }()
 
-	// Follow the workspace's changes, too, when it says them
+	// Follow the workspace's changes, too, when it says them, unless it
+	// can't, such as a filer whose backend doesn't watch, which is logged,
+	// and it's served without them
 	changes := make(chan schema.Change, 16)
 	if watcher, ok := s.workspace.(workspace.Watcher); ok {
-		go func() { done <- watcher.WatchResources(ctx, changes) }()
+		go func() {
+			err := watcher.WatchResources(ctx, changes)
+			if errors.Is(err, llm.ErrNotImplemented) {
+				s.logger.Info("workspace isn't watched", "namespace", s.ns.Name(), "reason", err.Error())
+				return
+			}
+			done <- err
+		}()
 	}
 	s.sync()
 	watching := false
