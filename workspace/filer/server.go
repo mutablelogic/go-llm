@@ -18,8 +18,8 @@ import (
 // TYPES
 
 // Server is an MCP server of a go-filer backend's folders, and files, as a
-// workspace, whose name, and description, are its namespace's, which has
-// no tools, yet
+// workspace, whose name, and title, are its namespace's, which has no
+// tools, yet
 type Server struct {
 	*server.Server
 	workspace *Workspace
@@ -27,7 +27,7 @@ type Server struct {
 
 // namespace is the namespace the server is of, which has no tools, yet
 type namespace struct {
-	name, description string
+	name, title string
 }
 
 var _ toolkit.Namespace = namespace{}
@@ -36,10 +36,10 @@ var _ toolkit.Namespace = namespace{}
 // LIFECYCLE
 
 // NewServer returns an MCP server of the go-filer backend's folders, and
-// files, with the name, which is an identifier, and the description, with
-// the server's options, such as its version. Returns ErrBadParameter when
+// files, with the name, which is an identifier, and the title, with the
+// server's options, such as its version. Returns ErrBadParameter when
 // the name isn't an identifier, or there's no backend.
-func NewServer(name, description string, filer gofiler.Filer, opts ...server.Opt) (*Server, error) {
+func NewServer(name, title string, filer gofiler.Filer, opts ...server.Opt) (*Server, error) {
 	if !types.IsIdentifier(name) {
 		return nil, llm.ErrBadParameter.Withf("name %q isn't an identifier", name)
 	}
@@ -47,7 +47,7 @@ func NewServer(name, description string, filer gofiler.Filer, opts ...server.Opt
 	if err != nil {
 		return nil, err
 	}
-	srv, err := server.New(namespace{name: name, description: description}, append(opts, server.WithWorkspace(ws))...)
+	srv, err := server.New(namespace{name: name, title: title}, append(opts, server.WithWorkspace(ws))...)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (s *Server) Run(ctx context.Context, logger *slog.Logger) error {
 // NAMESPACE
 
 func (n namespace) Name() string        { return n.name }
-func (n namespace) Description() string { return n.description }
+func (n namespace) Description() string { return n.title }
 func (namespace) SystemPrompt() string  { return "" }
 func (namespace) Type() string          { return toolschema.NamespaceBuiltin }
 func (namespace) Tools() []llm.Tool     { return nil }

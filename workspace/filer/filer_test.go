@@ -70,6 +70,15 @@ func Test_Workspace(t *testing.T) {
 		assert.NotContains(t, uris(list), "file:///workspace/filer/", "the folder isn't in itself")
 	})
 
+	t.Run("File", func(t *testing.T) {
+		// A file's path lists the file
+		list, err := ws.List(ctx, schema.ListRequest{Path: "workspace/filer/filer.go"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"file:///workspace/filer/filer.go"}, uris(list))
+		assert.False(t, list.Body[0].IsFolder())
+		assert.Positive(t, list.Body[0].Size)
+	})
+
 	t.Run("Recursive", func(t *testing.T) {
 		list, err := ws.List(ctx, schema.ListRequest{Path: "workspace", Recursive: true, Limit: filer.MaxLimit})
 		require.NoError(t, err)

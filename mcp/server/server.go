@@ -130,10 +130,12 @@ func (s *Server) Run(ctx context.Context) error {
 		case <-ch:
 			s.sync()
 		case change := <-changes:
-			// The first change says the workspace is watching, which isn't
-			// told
+			// The first change says the workspace is watching, so a client
+			// which listed its resources before then, and may have missed
+			// a change, is told to list them again
 			if !watching {
 				watching = true
+				s.listChanged()
 				continue
 			}
 			s.changed(ctx, change)

@@ -18,6 +18,13 @@ import (
 // Flags are the workspaces' flags for the server, which has none yet
 type Flags struct{}
 
+// FilerFlags are the flags of the filer, which is a workspace, of the files
+// of a folder, in the server, when its path is set
+type FilerFlags struct {
+	Path        string `name:"path" help:"Folder whose files are a workspace, or none, when it's not set." type:"path"`
+	Description string `name:"description" help:"What the folder's files are, which models are told, or \"The files in\" its path, when it's not set."`
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 

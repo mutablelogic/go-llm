@@ -37,6 +37,7 @@ import (
 	llmtools "github.com/mutablelogic/go-llm/toolkit/llm"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	workspacecmd "github.com/mutablelogic/go-llm/workspace/cmd"
+	filer "github.com/mutablelogic/go-llm/workspace/filer"
 	server "github.com/mutablelogic/go-server"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
@@ -74,6 +75,7 @@ type RunServer struct {
 	Resource    resourcecmd.Flags        `embed:"" prefix:"resource."`
 	Connector   mcpcmd.Flags             `embed:"" prefix:"mcp."`
 	Workspace   workspacecmd.Flags       `embed:"" prefix:"workspace."`
+	Filer       workspacecmd.FilerFlags  `embed:"" prefix:"filer."`
 	Frontend    frontendcmd.Flags        `embed:""`
 	servercmd.RunServer
 }
@@ -292,9 +294,15 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// and the resources, are made, as their servers' tools are added to
 		// the toolkit, each in a namespace of its own, as it's connected,
 		// and their resources will be added to the resources
-		return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
-			return runner.withRegistry(ctx, b, workspaces, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies, creds)
-		}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentialsProvider(creds), mcpregistry.WithToolkit(tools), mcpregistry.WithAgents(runAgentTool(events)))
+		//
+		// The folder of the filer, when its path is set, is a workspace, of
+		// its files, as an MCP server, in memory, whose namespace is in the
+		// toolkit, as the connectors' are
+		return runner.Filer.WithFiler(ctx, tools, func(files *filer.Server) error {
+			return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
+				return runner.withRegistry(ctx, b, workspaces, files, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies, creds)
+			}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentialsProvider(creds), mcpregistry.WithToolkit(tools), mcpregistry.WithAgents(runAgentTool(events)))
+		})
 	}, toolkit.WithBroadcaster(b), toolkit.WithCredentialsProvider(creds), toolkit.WithWorkspaces(workspaces))
 }
 
@@ -315,7 +323,7 @@ func runAgentTool(events *atomic.Pointer[registry.Registry]) func(context.Contex
 // and the toolkit, and runs the heartbeats which fire, and the messaging's
 // chats, the resources' cleaning, the connectors, the workspaces, and the
 // broadcaster, until any stops
-func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, workspaces *workspace.Registry, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc, creds credential.CredentialProvider) error {
+func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, workspaces *workspace.Registry, files *filer.Server, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc, creds credential.CredentialProvider) error {
 	return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 		// The example agents, as they are, before the server starts
 		createAgents(ctx, r)
@@ -370,6 +378,12 @@ func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster
 			// The workspaces which are added, and removed, are logged
 			return workspaces.Run(runCtx, ctx.Logger())
 		})
+		if files != nil {
+			group.Go(func() error {
+				// The folder's changes are served, as they're watched
+				return files.Run(runCtx, ctx.Logger())
+			})
+		}
 		group.Go(func() error {
 			return runner.RunServer.Run(ctx.WithContext(runCtx))
 		})
