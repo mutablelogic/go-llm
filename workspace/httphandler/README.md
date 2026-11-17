@@ -6,11 +6,11 @@ Workspaces are sets of folders and resources, such as notes and files. An MCP co
 
 ### GET /llm/workspace
 
-List the workspaces, in order of name, with whether each reads its resources, and is watched. `count` is the number of workspaces.
+List the workspaces, in order of name, with each one's `title` and `version`, such as its MCP server's, its `description`, as its namespace says, and whether it reads its resources, and is watched. `count` is the number of workspaces.
 
 ### GET /llm/workspace/{name}
 
-Get a workspace by name, with whether it reads its resources, and is watched. Returns 404 if there is no workspace with the name, or it isn't available, such as a connector which isn't connected.
+Get a workspace by name, with its `title`, `description` and `version`, and whether it reads its resources, and is watched. Returns 404 if there is no workspace with the name, or it isn't available, such as a connector which isn't connected.
 
 ### GET /llm/workspace/{name}/resource
 

@@ -21,23 +21,29 @@ func (r ListRequest) String() string   { return types.Stringify(r) }
 // TABLE OUTPUT
 
 func (Workspace) Header() []string {
-	return []string{"Workspace", "Read", "Watch"}
+	return []string{"Workspace", "Title", "Version", "Read", "Watch", "Description"}
 }
 
 func (Workspace) Width(int) int {
 	return 0
 }
 
-// Cell returns the workspace's name, and whether its resources are read,
-// and its changes are watched
+// Cell returns the workspace's name, title, version, whether its resources
+// are read, and its changes are watched, and its description
 func (w Workspace) Cell(col int) tui.CellText {
 	switch col {
 	case 0:
 		return w.Name
 	case 1:
-		return yes(w.Read)
+		return w.Title
 	case 2:
+		return w.Version
+	case 3:
+		return yes(w.Read)
+	case 4:
 		return yes(w.Watch)
+	case 5:
+		return w.Description
 	}
 	return ""
 }
