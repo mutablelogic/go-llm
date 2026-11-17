@@ -33,7 +33,26 @@ func (notes) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
 func (notes) List(context.Context, workspaceschema.ListRequest) (*workspaceschema.ListResponse, error) {
 	return &workspaceschema.ListResponse{Body: []workspaceschema.ResourceMeta{{URI: "file:///note.md", Name: "note.md", Type: "text/markdown"}}}, nil
 }
+// unsized is a resource whose size isn't known
+type unsized struct{ data []byte }
+
+func (unsized) URI() string         { return "file:///unsized.bin" }
+func (unsized) Name() string        { return "unsized.bin" }
+func (unsized) Description() string { return "" }
+func (unsized) Type() string        { return "application/octet-stream" }
+func (u unsized) Read(context.Context) (llm.ReadFunc, error) {
+	return llm.ReadBytes(u.data), nil
+}
+
 func (notes) Read(_ context.Context, uri string) (llm.Resource, error) {
+	switch uri {
+	case "file:///big.bin":
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "application/octet-stream", Data: make([]byte, toolkit.MaxRawSize+1)}}, nil
+	case "file:///unsized.bin":
+		return unsized{data: make([]byte, toolkit.MaxRawSize+1)}, nil
+	case "file:///unsized-small.bin":
+		return unsized{data: []byte("small")}, nil
+	}
 	if uri != "file:///note.md" {
 		return nil, llm.ErrNotFound.With(uri)
 	}
@@ -100,6 +119,17 @@ func TestWorkspaces(t *testing.T) {
 		assert.Contains(t, string(result), "text/markdown")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://other/file:///note.md"}`))
 		assert.ErrorIs(t, err, llm.ErrNotFound, "another workspace")
+
+		// Not when it's larger than is read raw, whether its size is known,
+		// or not, unless it's smaller
+		for _, uri := range []string{"file:///big.bin", "file:///unsized.bin"} {
+			_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"`+uri+`"}`))
+			assert.ErrorIs(t, err, llm.ErrBadParameter, uri)
+			assert.ErrorContains(t, err, "markdown format", uri)
+		}
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///unsized-small.bin"}`))
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "application/octet-stream")
 
 		// As Markdown
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md","format":"markdown"}`))

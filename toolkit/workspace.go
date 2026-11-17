@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 
 	// Packages
@@ -47,7 +49,7 @@ type ListWorkspaceRequest struct {
 // ReadWorkspaceRequest is the input of the workspace's read tool
 type ReadWorkspaceRequest struct {
 	URI    string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
-	Format string `json:"format,omitempty" enum:"raw,markdown" help:"raw, for the resource as it is, which is the default, or markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
+	Format string `json:"format,omitempty" enum:"raw,markdown" help:"raw, for the resource as it is, up to 10 MiB, which is the default, or markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
 	Offset uint64 `json:"offset,omitempty" help:"With markdown, the byte of its Markdown the part starts at, which is a part's next"`
 	Limit  uint64 `json:"limit,omitempty" help:"With markdown, the most bytes of its Markdown which are read"`
 }
@@ -59,7 +61,14 @@ type WorkspaceMeta struct {
 	Description string `json:"description,omitempty"`
 }
 
+// readResource is a resource whose content has been read
+type readResource struct {
+	llm.Resource
+	data []byte
+}
+
 var _ Namespace = (*workspaceNamespace)(nil)
+var _ llm.Sized = (*readResource)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -67,6 +76,11 @@ var _ Namespace = (*workspaceNamespace)(nil)
 // WorkspaceNamespace is the name of the namespace of the tools which list,
 // and read, the toolkit's workspaces, which it has with WithWorkspaces
 const WorkspaceNamespace = "workspace"
+
+// MaxRawSize is the most bytes of a resource the read tool returns as it
+// is, which a model is sent whole. A larger one is read with the markdown
+// format, a part at a time.
+const MaxRawSize = 10 * 1024 * 1024
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -225,7 +239,7 @@ func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 	}
 	switch format := strings.ToLower(strings.TrimSpace(req.Format)); format {
 	case "", "raw":
-		return resource, nil
+		return readRaw(ctx, req.URI, resource)
 	case "markdown":
 		part, err := workspace.ReadMarkdown(ctx, resource, req.Offset, req.Limit)
 		if err != nil {
@@ -239,6 +253,38 @@ func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// readRaw returns the resource, as it is, when it's no larger than
+// MaxRawSize, which, when its size isn't known, is read, to find out.
+// Returns ErrBadParameter when it's larger, which says to read it with the
+// markdown format.
+func readRaw(ctx context.Context, uri string, resource llm.Resource) (llm.Resource, error) {
+	tooLarge := func(size string) error {
+		return llm.ErrBadParameter.Withf("%s is %s, which is more than the %d bytes which are read raw, so read it with the markdown format, a part at a time", uri, size, MaxRawSize)
+	}
+	if size, ok := llm.ContentLength(resource); ok {
+		if size > MaxRawSize {
+			return nil, tooLarge(fmt.Sprintf("%d bytes", size))
+		}
+		return resource, nil
+	}
+
+	// Its size isn't known, so it's read, as far as is more than it can be
+	read, err := resource.Read(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var data []byte
+	if err := read(ctx, func(r io.Reader) error {
+		data, err = io.ReadAll(io.LimitReader(r, MaxRawSize+1))
+		return err
+	}); err != nil {
+		return nil, err
+	} else if len(data) > MaxRawSize {
+		return nil, tooLarge("larger")
+	}
+	return &readResource{Resource: resource, data: data}, nil
+}
 
 // fallback returns true when the resolve function's error is that it
 // doesn't have a resource, rather than that it failed, so the workspaces
@@ -256,4 +302,15 @@ func unmarshalInput(input json.RawMessage, v any) error {
 		return llm.ErrBadParameter.Withf("input: %v", err)
 	}
 	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// READ RESOURCE
+
+// ContentLength returns the length of its content, as it was read
+func (r *readResource) ContentLength() int64 { return int64(len(r.data)) }
+
+// Read returns the function which reads its content, as it was read
+func (r *readResource) Read(context.Context) (llm.ReadFunc, error) {
+	return llm.ReadBytes(r.data), nil
 }
