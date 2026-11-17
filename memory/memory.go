@@ -20,6 +20,7 @@ import (
 	broadcaster "github.com/mutablelogic/go-llm/broadcaster"
 	eventschema "github.com/mutablelogic/go-llm/broadcaster/schema"
 	schema "github.com/mutablelogic/go-llm/memory/schema"
+	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
 	trace "go.opentelemetry.io/otel/trace"
@@ -66,6 +67,11 @@ type Memory struct {
 	now         func() time.Time
 	toolsOnce   sync.Once  // Makes the tools once, so they're the same values
 	tools       []llm.Tool // The tools, once they're made
+
+	// The watches of its workspace, which are told of each change, which
+	// none misses, however slowly it's received
+	watchMu sync.Mutex
+	watches map[*watch]struct{}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -308,6 +314,7 @@ func (m *Memory) getMemory(ctx context.Context, key string) (schema.Memory, erro
 // broadcaster, whose row is its key, and whose data is its version, unless
 // it was deleted
 func (m *Memory) publishMemory(action eventschema.EventAction, memory schema.Memory) {
+	m.notify(workspaceschema.Change{Action: action, URI: memoryURI(memory.Key)})
 	if m.broadcaster == nil {
 		return
 	}
@@ -323,6 +330,7 @@ func (m *Memory) publishMemory(action eventschema.EventAction, memory schema.Mem
 // publish publishes the change to the detail of the field, when the memory
 // has a broadcaster, with the detail, when there is one
 func (m *Memory) publish(action eventschema.EventAction, field schema.Field, detail *schema.Detail) {
+	m.notify(workspaceschema.Change{Action: eventschema.EventUpdate, URI: DetailsURI})
 	if m.broadcaster == nil {
 		return
 	}
