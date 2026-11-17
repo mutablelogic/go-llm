@@ -1,6 +1,7 @@
 package memory_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -106,10 +107,46 @@ func Test_Workspace(t *testing.T) {
 		assert.Equal(t, workspaceschema.Change{Action: eventschema.EventDelete, URI: "memory:///memories/garden.md"}, next())
 	})
 
-	t.Run("NoBroadcaster", func(t *testing.T) {
+	t.Run("Slow", func(t *testing.T) {
+		// Changes made while the watch isn't receiving aren't missed, and a
+		// memory which is created, and then changed, before it's sent, is said
+		// to be created, with no broadcaster
 		m, err := memory.New(ctx, memory.NewStore())
 		require.NoError(t, err)
-		err = m.WatchResources(ctx, make(chan workspaceschema.Change))
-		assert.ErrorIs(t, err, llm.ErrNotImplemented)
+		ch := make(chan workspaceschema.Change)
+		go func() { _ = m.WatchResources(t.Context(), ch) }()
+		assert.Equal(t, workspaceschema.Change{Action: eventschema.EventUpdate}, <-ch, "it's watching")
+		const n = 100
+		for i := range n {
+			key := fmt.Sprintf("memory_%03d", i)
+			got, _, err := m.Remember(ctx, schema.MemoryMeta{Key: key, Description: "A memory", Body: "One"}, "")
+			require.NoError(t, err)
+			_, _, err = m.Remember(ctx, schema.MemoryMeta{Key: key, Description: "A memory", Body: "Two"}, got.Version)
+			require.NoError(t, err)
+		}
+		created := map[string]bool{}
+		for len(created) < n {
+			select {
+			case change := <-ch:
+				switch change.Action {
+				case eventschema.EventCreate:
+					assert.False(t, created[change.URI], "created once")
+					created[change.URI] = true
+				case eventschema.EventUpdate:
+					assert.True(t, created[change.URI], "updated, once it's said to be created")
+				default:
+					t.Fatalf("unexpected %v", change)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatalf("missed changes: %d of %d were created", len(created), n)
+			}
+		}
+	})
+
+	t.Run("Limit", func(t *testing.T) {
+		// A limit which is too large to be an int is the most
+		list, err := m.List(ctx, workspaceschema.ListRequest{Recursive: true, Limit: ^uint(0)})
+		require.NoError(t, err)
+		assert.NotEmpty(t, list.Body)
 	})
 }
