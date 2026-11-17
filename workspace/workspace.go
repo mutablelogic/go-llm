@@ -74,3 +74,21 @@ type Subscriber interface {
 	// Unsubscribe stops asking for the resource with the URI's updates
 	Unsubscribe(ctx context.Context, uri string) error
 }
+
+// Describer is a workspace which says what it is, for people: its title,
+// description, and version, such as an MCP connector's namespace, whose
+// title, and version, are its server's, and whose description is its
+// namespace's, which a workspace doesn't need to be
+type Describer interface {
+	Workspace
+
+	// Title returns the workspace's title, or nothing
+	Title() string
+
+	// Description returns what the workspace has, or nothing
+	Description() string
+
+	// Version returns the workspace's version, such as its server's, or
+	// nothing
+	Version() string
+}

@@ -436,5 +436,9 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 func (r *Registry) workspaceOf(name string, ws Workspace) schema.Workspace {
 	_, reader := ws.(Reader)
 	_, watched := r.watches[name]
-	return schema.Workspace{Name: name, Read: reader, Watch: watched}
+	result := schema.Workspace{Name: name, Read: reader, Watch: watched}
+	if d, ok := ws.(Describer); ok {
+		result.Title, result.Description, result.Version = d.Title(), d.Description(), d.Version()
+	}
+	return result
 }

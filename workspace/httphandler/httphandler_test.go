@@ -3,11 +3,15 @@ package httphandler_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	test "github.com/mutablelogic/go-llm/registry/test"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	httphandler "github.com/mutablelogic/go-llm/workspace/httphandler"
@@ -31,8 +35,11 @@ func (notes) List(_ context.Context, req schema.ListRequest) (*schema.ListRespon
 	}, Next: "more"}, nil
 }
 
-func (notes) Read(context.Context, string) (llm.Resource, error) {
-	return nil, llm.ErrNotFound
+func (notes) Read(_ context.Context, uri string) (llm.Resource, error) {
+	if uri != "file:///a.md" {
+		return nil, llm.ErrNotFound.With(uri)
+	}
+	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/markdown", Data: []byte("# A\n\nHello")}}, nil
 }
 
 // get requests the path, and decodes its JSON, and returns its status
@@ -81,5 +88,69 @@ func Test_Workspaces(t *testing.T) {
 		assert.Equal(t, "resource://notes/file:///2026/b.md", list.Body[0].URI, "the workspace's URI")
 		assert.Equal(t, http.StatusNotFound, get(t, server, "/llm/workspace/missing/resource", nil))
 		assert.Equal(t, http.StatusBadRequest, get(t, server, "/llm/workspace/notes/resource?limit=x", nil))
+	})
+}
+
+// request requests the path, with the headers, and returns the response,
+// and its body
+func request(t *testing.T, server *test.Server, path string, headers map[string]string) (*http.Response, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, server.URL+test.Prefix+path, nil)
+	require.NoError(t, err)
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp, string(data)
+}
+
+func Test_Content(t *testing.T) {
+	registry, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, registry.Add("notes", notes{}))
+	server := test.NewServerFunc(t, func(router *httprouter.Router) error {
+		return httphandler.RegisterHandlers(registry, router)
+	})
+	path := "/llm/workspace/notes/content?uri=" + url.QueryEscape("resource://notes/file:///a.md")
+
+	t.Run("Raw", func(t *testing.T) {
+		resp, body := request(t, server, path, nil)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Equal(t, "text/markdown", resp.Header.Get("Content-Type"))
+		assert.Equal(t, "# A\n\nHello", body)
+		etag := resp.Header.Get("ETag")
+		require.NotEmpty(t, etag)
+
+		// Not again, when it's not modified
+		resp, _ = request(t, server, path, map[string]string{"If-None-Match": etag})
+		assert.Equal(t, http.StatusNotModified, resp.StatusCode)
+
+		// In ranges
+		resp, body = request(t, server, path, map[string]string{"Range": "bytes=0-2"})
+		assert.Equal(t, http.StatusPartialContent, resp.StatusCode)
+		assert.Equal(t, "# A", body)
+	})
+
+	t.Run("Markdown", func(t *testing.T) {
+		resp, body := request(t, server, path+"&format=markdown", nil)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.True(t, strings.HasPrefix(resp.Header.Get("Content-Type"), "text/markdown"))
+		assert.True(t, strings.HasPrefix(body, "---\nuri: \"resource://notes/file:///a.md\"\n"), body)
+		assert.Contains(t, body, "Hello")
+	})
+
+	t.Run("Errors", func(t *testing.T) {
+		resp, _ := request(t, server, path+"&format=pdf", nil)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		resp, _ = request(t, server, "/llm/workspace/notes/content", nil)
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "no uri")
+		resp, _ = request(t, server, "/llm/workspace/notes/content?uri=file:///missing.md", nil)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+		resp, _ = request(t, server, "/llm/workspace/missing/content?uri=file:///a.md", nil)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	// Packages
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	workspace "github.com/mutablelogic/go-llm/workspace"
@@ -15,6 +16,7 @@ import (
 
 var _ workspace.Reader = (*Namespace)(nil)
 var _ workspace.Available = (*Namespace)(nil)
+var _ workspace.Describer = (*Namespace)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
@@ -26,6 +28,27 @@ var _ workspace.Available = (*Namespace)(nil)
 func (ns *Namespace) Available() bool {
 	c := ns.current()
 	return c != nil && c.Connected() && c.HasResources()
+}
+
+// Title returns the title of the server the namespace is connected to, or
+// its name, when it has none, or nothing, when it isn't connected
+func (ns *Namespace) Title() string {
+	if server := ns.server(); server != nil {
+		if server.Title != "" {
+			return server.Title
+		}
+		return server.Name
+	}
+	return ""
+}
+
+// Version returns the version of the server the namespace is connected to,
+// or nothing, when it isn't connected
+func (ns *Namespace) Version() string {
+	if server := ns.server(); server != nil {
+		return server.Version
+	}
+	return ""
 }
 
 // List returns a page of the server's folders, and resources, as
@@ -58,6 +81,17 @@ func (ns *Namespace) current() *client.Client {
 	ns.mu.RLock()
 	defer ns.mu.RUnlock()
 	return ns.client
+}
+
+// server returns the server the namespace is connected to, as it said, or
+// nil, when it isn't connected
+func (ns *Namespace) server() *sdkmcp.Implementation {
+	c := ns.current()
+	if c == nil {
+		return nil
+	}
+	server, _ := c.Status()
+	return server
 }
 
 // workspace returns the workspace of the server the namespace is connected

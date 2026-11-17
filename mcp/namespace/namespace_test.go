@@ -279,10 +279,19 @@ func Test_Workspace(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, tk.Add(ns))
 	assert.False(t, ns.Available(), "until it's connected")
+	assert.Empty(t, ns.Title())
 	assert.Error(t, registry.With("test", func(workspace.Workspace) error { return nil }))
 
 	require.NoError(t, ns.Connect(ctx, connect(t, server), "", nil, 1))
 	assert.True(t, ns.Available())
+
+	// Its title, and version, are its server's, and its description is the
+	// namespace's
+	ws, err := registry.GetWorkspace(ctx, "test")
+	require.NoError(t, err)
+	assert.Equal(t, test.Name, ws.Title, "its name, as it has no title")
+	assert.Equal(t, test.Version, ws.Version)
+	assert.Equal(t, ns.Description(), ws.Description)
 	result, err := tk.CallTool(ctx, "workspace:list", json.RawMessage(`{"workspace":"test"}`))
 	require.NoError(t, err)
 	assert.Contains(t, string(result), "file:///a.md")

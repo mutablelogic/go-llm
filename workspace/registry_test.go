@@ -381,3 +381,26 @@ func Test_Watched(t *testing.T) {
 	require.NoError(t, r.Close())
 	require.Eventually(t, func() bool { return !watched(r, "notes") }, 5*time.Second, time.Millisecond, "once it's closed")
 }
+
+// described is a workspace which says what it is
+type described struct{ empty }
+
+func (described) Title() string       { return "Notes" }
+func (described) Description() string { return "My notes" }
+func (described) Version() string     { return "1.0" }
+
+func Test_Describer(t *testing.T) {
+	// A workspace which says what it is has its title, description and
+	// version, and one which doesn't, none
+	ctx := context.Background()
+	r, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("notes", described{}))
+	require.NoError(t, r.Add("other", empty{}))
+	ws, err := r.GetWorkspace(ctx, "notes")
+	require.NoError(t, err)
+	assert.Equal(t, schema.Workspace{Name: "notes", Title: "Notes", Description: "My notes", Version: "1.0"}, *ws)
+	ws, err = r.GetWorkspace(ctx, "other")
+	require.NoError(t, err)
+	assert.Equal(t, schema.Workspace{Name: "other"}, *ws)
+}
