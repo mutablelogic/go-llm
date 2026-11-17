@@ -57,6 +57,10 @@ func (notes) Read(_ context.Context, uri string) (llm.Resource, error) {
 		return unsized{data: []byte("small")}, nil
 	case "file:///big.txt":
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/plain", Data: make([]byte, toolkit.MaxRawSize+1)}}, nil
+	case "file:///big.pdf":
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "application/pdf", Data: make([]byte, toolkit.MaxRawSize+1)}}, nil
+	case "file:///cafe.txt":
+		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/plain; charset=windows-1252", Data: []byte("caf\xe9")}}, nil
 	case "file:///song.mp3":
 		return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "audio/mpeg", Data: make([]byte, toolkit.MaxRawSize+1)}}, nil
 	}
@@ -160,7 +164,6 @@ func TestWorkspaces(t *testing.T) {
 			_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"`+uri+`"}`))
 			assert.ErrorIs(t, err, llm.ErrBadParameter, uri)
 			assert.ErrorContains(t, err, "workspace:list", uri)
-			assert.NotContains(t, err.Error(), "markdown", uri)
 		}
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///song.mp3"}`))
 		assert.ErrorContains(t, err, "llm:transcribe")
@@ -176,6 +179,16 @@ func TestWorkspaces(t *testing.T) {
 		require.NoError(t, err)
 		assert.Contains(t, string(result), "resource://notes/file:///song.mp3")
 		assert.Equal(t, []string{"resource://notes/file:///song.mp3"}, kept)
+
+		// A large document, whose text can be read as Markdown, says so
+		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///big.pdf","format":"raw"}`))
+		assert.ErrorContains(t, err, "markdown format")
+
+		// Text in another charset is decoded
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///cafe.txt","format":"raw"}`))
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(result, &text))
+		assert.Contains(t, text, "\ncafé\n")
 		// Raw, a text larger than is sent at once is a part at a time
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///big.txt","format":"raw"}`))
 		require.NoError(t, err)
@@ -253,5 +266,16 @@ func TestWorkspacePrompt(t *testing.T) {
 	prompt := strings.Join(prompts, "\n")
 	for _, want := range []string{"by its path", "not its uri", "cursor", "unchanged", "offset", "length", "llm:transcribe", "no search", "which one you read"} {
 		assert.Contains(t, prompt, want)
+	}
+}
+
+func TestTextType(t *testing.T) {
+	// Text, including subtitles, is text, and an image, such as an SVG,
+	// whose type is XML's too, isn't
+	for _, contentType := range []string{"text/plain", "text/markdown; charset=utf-8", "application/json", "application/x-subrip", "application/ld+json", "application/xml"} {
+		assert.True(t, toolkit.TextType(contentType), contentType)
+	}
+	for _, contentType := range []string{"image/svg+xml", "image/png", "audio/mpeg", "video/mp4", "application/pdf", "application/octet-stream"} {
+		assert.False(t, toolkit.TextType(contentType), contentType)
 	}
 }

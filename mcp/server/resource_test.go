@@ -13,6 +13,8 @@ import (
 	"time"
 
 	// Packages
+	jsonrpc "github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	llm "github.com/mutablelogic/go-llm"
 	client "github.com/mutablelogic/go-llm/mcp/client"
 	server "github.com/mutablelogic/go-llm/mcp/server"
@@ -194,6 +196,9 @@ func Test_Workspace(t *testing.T) {
 		_, err = ws.Read(ctx, "file:///missing.md")
 		assert.ErrorIs(t, err, llm.ErrNotFound, "MCP's error is ErrNotFound")
 		assert.EqualError(t, err, "not found: file:///missing.md", "by its URI")
+		var wire *jsonrpc.Error
+		require.ErrorAs(t, err, &wire, "MCP's error is in its chain")
+		assert.Equal(t, int64(sdkmcp.CodeResourceNotFound), wire.Code)
 		assert.NotContains(t, err.Error(), "resources/read", "without MCP's call")
 		_, err = ws.Read(ctx, "file:///gone.md")
 		assert.ErrorIs(t, err, llm.ErrNotFound, "as is one whose content is gone")

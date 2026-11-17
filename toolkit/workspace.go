@@ -17,6 +17,7 @@ import (
 	workspaceschema "github.com/mutablelogic/go-llm/workspace/schema"
 	eventschema "github.com/mutablelogic/go-server/broadcaster/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
+	htmlindex "golang.org/x/text/encoding/htmlindex"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -177,7 +178,7 @@ func (*workspaceNamespace) SystemPrompt() string {
 		"workspace:list shows the workspaces, and, with a workspace, its folders and resources: list under a folder by its path, from the listing, not its uri, which is for reading. " +
 		"Long listings page: pass a response's next back as cursor, unchanged, with the same path, recursive and type; count, when it's there, is how many there are. type filters, such as inode/directory for folders alone. " +
 		"workspace:read reads a resource by its uri: a document's text, as Markdown, a part at a time, whose front matter has its length; pass a part's next back as offset, until a part has none. " +
-		"An image, audio or video comes back as a file, whose link you give other tools, such as llm:transcribe, for its speech, rather than reading it. " +
+		"An image, audio or video comes back as a file, which isn't sent to you as it is, but as a link, which you give other tools: llm:ocr for an image's text, and llm:transcribe for speech. " +
 		"To give the person a file, such as a film, link its uri in your reply, such as [Blade Runner](resource://files/Movies/Blade%20Runner.mp4), which they open, or play, as it's streamed, whatever its size, and which a chat is sent as a link; sending it to a chat uploads it, which a chat can be too small for, such as Telegram's 50 MB. " +
 		"There's no search yet: to find something, walk the folders, and don't say you searched. " +
 		"When more than one workspace could hold what you want, say which one you read."
@@ -309,16 +310,19 @@ func readRaw(ctx context.Context, uri string, resource llm.Resource, offset, lim
 	}
 	tooLarge := func(size string) error {
 		if text {
-			return llm.ErrBadParameter.Withf("%s is %s, more than the %d bytes which are read raw, so read it as Markdown, a part at a time, from an offset, with the markdown format", uri, size, MaxRawSize)
+			return llm.ErrBadParameter.Withf("%s %s, more than the %d bytes which are read raw, so read it as Markdown, a part at a time, from an offset, with the markdown format", uri, size, MaxRawSize)
 		}
-		advice := "its metadata is listed by workspace:list"
-		if media(resource.Type()) && !strings.HasPrefix(strings.ToLower(resource.Type()), "image/") {
-			advice += ", and its speech is transcribed by llm:transcribe"
+		mediatype := strings.ToLower(resource.Type())
+		switch {
+		case strings.HasPrefix(mediatype, "audio/"), strings.HasPrefix(mediatype, "video/"):
+			return llm.ErrBadParameter.Withf("%s %s, of %s, more than the %d bytes which are sent as a file: its metadata is listed by workspace:list, and its speech is transcribed by llm:transcribe", uri, size, resource.Type(), MaxRawSize)
+		case strings.HasPrefix(mediatype, "image/"):
+			return llm.ErrBadParameter.Withf("%s %s, of %s, more than the %d bytes which are sent as a file: its metadata is listed by workspace:list, and its text is read by llm:ocr", uri, size, resource.Type(), MaxRawSize)
 		}
-		return llm.ErrBadParameter.Withf("%s is %s of %s, more than the %d bytes which are sent as a file, and it has no text: %s", uri, size, resource.Type(), MaxRawSize, advice)
+		return llm.ErrBadParameter.Withf("%s %s, of %s, more than the %d bytes which are sent as a file: its text, when it has any, such as a PDF's, or an Office document's, is read with the markdown format, a part at a time, and its metadata is listed by workspace:list", uri, size, resource.Type(), MaxRawSize)
 	}
 	if size, ok := llm.ContentLength(resource); ok && size > MaxRawSize {
-		return nil, tooLarge(fmt.Sprintf("%d bytes", size))
+		return nil, tooLarge(fmt.Sprintf("is %d bytes", size))
 	} else if ok && !text {
 		return resource, nil
 	}
@@ -335,10 +339,12 @@ func readRaw(ctx context.Context, uri string, resource llm.Resource, offset, lim
 	}); err != nil {
 		return nil, err
 	} else if len(data) > MaxRawSize {
-		return nil, tooLarge("larger")
+		return nil, tooLarge("is larger")
 	}
-	if text && utf8.Valid(data) {
-		return string(data), nil
+	if text {
+		if decoded, ok := decodeText(resource.Type(), data); ok {
+			return decoded, nil
+		}
 	}
 	return &readResource{Resource: resource, data: data}, nil
 }
@@ -396,10 +402,11 @@ func readText(ctx context.Context, resource llm.Resource, offset, limit uint64) 
 			end--
 		}
 	}
-	if !utf8.Valid(data[start:end]) {
-		return nil, nil
+	body, ok := decodeText(resource.Type(), data[start:end])
+	if !ok {
+		return nil, llm.ErrBadParameter.Withf("%s isn't valid text, of its type, %s: read it with the markdown format", resource.URI(), resource.Type())
 	}
-	part := workspaceschema.Markdown{URI: resource.URI(), Type: resource.Type(), Body: string(data[start:end]), Offset: offset + uint64(start)}
+	part := workspaceschema.Markdown{URI: resource.URI(), Type: resource.Type(), Body: body, Offset: offset + uint64(start)}
 	if more {
 		next := offset + uint64(end)
 		part.Next = &next
@@ -414,22 +421,49 @@ func readText(ctx context.Context, resource llm.Resource, offset, limit uint64) 
 	return part.Document(), nil
 }
 
-// textual returns true when the type is text's, which is read as its text
-func textual(contentType string) bool {
-	mediatype, _, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return false
-	}
+// TextType returns true when the type is text's, which is read as its
+// text, such as text/plain, JSON, YAML, or subtitles, application/x-subrip,
+// as an image's, audio's, or video's isn't, such as an SVG image, whose type
+// is XML's too
+func TextType(contentType string) bool {
+	mediatype, _, _ := mime.ParseMediaType(contentType)
+	mediatype = strings.ToLower(mediatype)
 	switch {
-	case strings.HasPrefix(mediatype, "text/"):
+	case media(mediatype):
+		return false
+	case strings.HasPrefix(mediatype, "text/"), strings.HasSuffix(mediatype, "+json"), strings.HasSuffix(mediatype, "+xml"):
 		return true
-	case mediatype == "application/json", mediatype == "application/xml", mediatype == "application/yaml",
-		mediatype == "application/x-yaml", mediatype == "application/javascript", mediatype == "application/toml":
-		return true
-	case strings.HasSuffix(mediatype, "+json"), strings.HasSuffix(mediatype, "+xml"):
+	}
+	switch mediatype {
+	case "application/json", "application/xml", "application/x-subrip", "application/javascript", "application/x-yaml", "application/yaml", "application/toml", "application/x-sh", "application/sql", "application/x-ndjson":
 		return true
 	}
 	return false
+}
+
+// textual returns true when the type is text's, which is read as its text
+func textual(contentType string) bool {
+	return TextType(contentType)
+}
+
+// decodeText returns the text, as UTF-8, of the data, in the type's
+// charset, or of UTF-8, without one, and true, or false, when it isn't
+// valid in it, or the charset isn't known
+func decodeText(contentType string, data []byte) (string, bool) {
+	_, params, _ := mime.ParseMediaType(contentType)
+	name := strings.ToLower(strings.TrimSpace(params["charset"]))
+	if name == "" || name == "utf-8" || name == "utf8" || name == "us-ascii" {
+		return string(data), utf8.Valid(data)
+	}
+	encoding, err := htmlindex.Get(name)
+	if err != nil {
+		return "", false
+	}
+	decoded, err := encoding.NewDecoder().Bytes(data)
+	if err != nil || !utf8.Valid(decoded) {
+		return "", false
+	}
+	return string(decoded), true
 }
 
 // fallback returns true when the resolve function's error is that it
