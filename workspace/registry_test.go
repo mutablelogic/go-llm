@@ -338,7 +338,7 @@ func Test_Spans(t *testing.T) {
 	_, err = r.Resolve(ctx, "resource://notes/file:///note.md")
 	require.NoError(t, err)
 	assert.Equal(t, "resource://notes/file:///note.md", attrs("llm.workspace.Resolve")["arg.uri"])
-	assert.Equal(t, "file:///note.md", attrs("llm.workspace.Read")["arg.uri"])
+	assert.Equal(t, "resource://notes/file:///note.md", attrs("llm.workspace.Read")["arg.uri"], "as it was asked for")
 
 	// As is one which isn't the workspace's URI, which each workspace is
 	// asked for, with its name

@@ -297,6 +297,43 @@ type sizedAs struct {
 
 func (s *sizedAs) ContentLength() int64 { return s.size }
 
+// rootedFiles is a workspace of files, whose resources are under file:///
+type rootedFiles struct{ files }
+
+func (rootedFiles) Root() string { return "file:///" }
+
+func Test_WorkspaceRoot(t *testing.T) {
+	// A workspace's root is its server's resource template, which its
+	// client's workspace has as its root
+	ctx := t.Context()
+	srv, err := server.New(&tools{}, server.WithWorkspace(rootedFiles{files{"a.md": "# A"}}))
+	require.NoError(t, err)
+	c, err := client.New("memory://files", client.WithTransport(srv.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c.Connect(ctx))
+	t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
+	templates, err := c.ListResourceTemplates(ctx)
+	require.NoError(t, err)
+	require.Len(t, templates, 1)
+	assert.Equal(t, "file:///{+path}", templates[0].URITemplate)
+	ws, err := workspace.NewClient(c)
+	require.NoError(t, err)
+	rooted, ok := ws.(workspace.Rooted)
+	require.True(t, ok)
+	assert.Equal(t, "file:///", rooted.Root())
+
+	// Without a root, it has none
+	plain, err := server.New(&tools{}, server.WithWorkspace(files{}))
+	require.NoError(t, err)
+	c2, err := client.New("memory://plain", client.WithTransport(plain.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c2.Connect(ctx))
+	t.Cleanup(func() { assert.NoError(t, c2.Disconnect()) })
+	ws, err = workspace.NewClient(c2)
+	require.NoError(t, err)
+	assert.Empty(t, ws.(workspace.Rooted).Root())
+}
+
 // watched is a workspace of files, whose changes are said
 type watched struct {
 	files

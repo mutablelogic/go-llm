@@ -79,6 +79,17 @@ type Subscriber interface {
 // description, and version, such as an MCP connector's namespace, whose
 // title, and version, are its server's, and whose description is its
 // namespace's, which a workspace doesn't need to be
+// Rooted is a workspace whose resources' URIs are under a root, such as
+// file:///, which a registry leaves out of their URIs, such as
+// resource://files/notes/a.md, of file:///notes/a.md
+type Rooted interface {
+	Workspace
+
+	// Root returns the root of its resources' URIs, which ends with a
+	// slash, or nothing, when it has none
+	Root() string
+}
+
 type Describer interface {
 	Workspace
 

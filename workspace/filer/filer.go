@@ -54,6 +54,7 @@ type object struct {
 
 var _ workspace.Reader = (*Workspace)(nil)
 var _ workspace.Watcher = (*Workspace)(nil)
+var _ workspace.Rooted = (*Workspace)(nil)
 var _ llm.Sized = (*object)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -159,6 +160,9 @@ func (w *Workspace) Read(ctx context.Context, uri string) (llm.Resource, error) 
 	}
 	return resource, nil
 }
+
+// Root returns the root of the folders', and files', URIs, file:///
+func (w *Workspace) Root() string { return uriPrefix + "/" }
 
 // WatchResources sends the folders, and files, which are created, updated,
 // or deleted, and, without a URI, that they changed, but not which, as the

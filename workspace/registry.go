@@ -192,8 +192,8 @@ func (r *Registry) Resolve(ctx context.Context, uri string) (_ llm.Resource, err
 	)
 	defer func() { endSpan(err) }()
 
-	if name, original, ok := schema.ParseURI(uri); ok {
-		return r.Read(ctx, name, original)
+	if name, _, ok := schema.ParseURI(uri); ok {
+		return r.Read(ctx, name, uri)
 	}
 	for name, ws := range r.All() {
 		if _, ok := ws.(Reader); !ok {
@@ -222,16 +222,19 @@ func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Res
 	)
 	defer func() { endSpan(err) }()
 
-	if workspace, original, ok := schema.ParseURI(uri); ok {
-		if workspace != name {
-			return nil, llm.ErrNotFound.Withf("resource %q isn't in workspace %q", uri, name)
-		}
-		uri = original
+	workspace, rest, isWorkspaces := schema.ParseURI(uri)
+	if isWorkspaces && workspace != name {
+		return nil, llm.ErrNotFound.Withf("resource %q isn't in workspace %q", uri, name)
 	}
+	var root string
 	err = r.With(name, func(ws Workspace) error {
 		reader, ok := ws.(Reader)
 		if !ok {
 			return llm.ErrNotImplemented.Withf("workspace %q doesn't read its resources", name)
+		}
+		root = rootOf(ws)
+		if isWorkspaces {
+			uri = schema.OriginalURI(root, rest)
 		}
 		resource, err = reader.Read(ctx, uri)
 		return err
@@ -239,7 +242,7 @@ func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Res
 	if err != nil {
 		return nil, err
 	}
-	return withURI(resource, schema.URIOf(name, uri)), nil
+	return withURI(resource, schema.URIOf(name, root, uri)), nil
 }
 
 // All returns the workspaces which are available, by their names, in order of their names, as
@@ -301,7 +304,7 @@ func (r *Registry) watch(ctx context.Context, name string, w *watch, watcher Wat
 		}
 		uri := change.URI
 		if uri != "" {
-			uri = schema.URIOf(name, uri)
+			uri = schema.URIOf(name, rootOf(watcher), uri)
 		}
 		data, err := json.Marshal(ResourceEvent{URI: uri})
 		if err != nil {
@@ -411,8 +414,10 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 	)
 	defer func() { endSpan(err) }()
 
+	var root string
 	err = r.With(name, func(ws Workspace) error {
 		result, err = ws.List(ctx, req)
+		root = rootOf(ws)
 		return err
 	})
 	if err != nil {
@@ -422,9 +427,9 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 	// Their URIs, and their artwork's, are the workspace's
 	for i := range result.Body {
 		resource := &result.Body[i]
-		resource.URI = schema.URIOf(name, resource.URI)
+		resource.URI = schema.URIOf(name, root, resource.URI)
 		for j := range resource.Artwork {
-			resource.Artwork[j].URI = schema.URIOf(name, resource.Artwork[j].URI)
+			resource.Artwork[j].URI = schema.URIOf(name, root, resource.Artwork[j].URI)
 		}
 	}
 	return result, nil
@@ -441,4 +446,13 @@ func (r *Registry) workspaceOf(name string, ws Workspace) schema.Workspace {
 		result.Title, result.Description, result.Version = d.Title(), d.Description(), d.Version()
 	}
 	return result
+}
+
+// rootOf returns the root of the workspace's resources' URIs, or nothing,
+// when it has none
+func rootOf(ws any) string {
+	if rooted, ok := ws.(Rooted); ok {
+		return rooted.Root()
+	}
+	return ""
 }

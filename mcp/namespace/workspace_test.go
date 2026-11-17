@@ -131,3 +131,29 @@ func Test_WatchResources(t *testing.T) {
 	cancel()
 	require.NoError(t, <-watched)
 }
+
+// rootedServed is a workspace whose resources are under file:///
+type rootedServed struct{ served }
+
+func (rootedServed) Root() string { return "file:///" }
+
+func Test_Root(t *testing.T) {
+	// A namespace's root is its server's, of its resource template, while
+	// it's connected
+	ctx := t.Context()
+	srv, err := server.New(noTools{}, server.WithWorkspace(rootedServed{served{changes: make(chan schema.Change)}}))
+	require.NoError(t, err)
+	c, err := client.New("memory://files", client.WithTransport(srv.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c.Connect(ctx))
+	t.Cleanup(func() { _ = c.Disconnect() })
+
+	ns, err := namespace.New("files", "")
+	require.NoError(t, err)
+	var _ workspace.Rooted = ns
+	assert.Empty(t, ns.Root(), "not connected")
+	require.NoError(t, ns.Connect(ctx, c, "", nil, 1))
+	assert.Equal(t, "file:///", ns.Root())
+	ns.Disconnect(c)
+	assert.Empty(t, ns.Root(), "disconnected")
+}
