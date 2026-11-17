@@ -315,3 +315,42 @@ func same(a, b Workspace) (result bool) {
 	}()
 	return a == b
 }
+
+// ListWorkspaces returns the workspaces which are available, in order of
+// their names, with whether each reads its resources, and is watched
+func (r *Registry) ListWorkspaces() *schema.WorkspaceList {
+	result := &schema.WorkspaceList{Body: []schema.Workspace{}}
+	for name, ws := range r.All() {
+		result.Body = append(result.Body, workspaceOf(name, ws))
+	}
+	result.Count = uint(len(result.Body))
+	return result
+}
+
+// GetWorkspace returns the workspace with the name, with whether it reads
+// its resources, and is watched. Returns ErrNotFound when there's none.
+func (r *Registry) GetWorkspace(name string) (result *schema.Workspace, err error) {
+	err = r.With(name, func(ws Workspace) error {
+		w := workspaceOf(name, ws)
+		result = &w
+		return nil
+	})
+	return result, err
+}
+
+// ListResources returns a page of the folders, and resources, of the
+// workspace with the name. Returns ErrNotFound when there's none.
+func (r *Registry) ListResources(ctx context.Context, name string, req schema.ListRequest) (result *schema.ListResponse, err error) {
+	err = r.With(name, func(ws Workspace) error {
+		result, err = ws.List(ctx, req)
+		return err
+	})
+	return result, err
+}
+
+// workspaceOf returns the workspace, as it's listed
+func workspaceOf(name string, ws Workspace) schema.Workspace {
+	_, reader := ws.(Reader)
+	_, watcher := ws.(Watcher)
+	return schema.Workspace{Name: name, Read: reader, Watch: watcher}
+}

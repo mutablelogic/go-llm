@@ -20,6 +20,7 @@ Each part is documented beside its handlers:
 - [Tasks](https://github.com/mutablelogic/go-llm/blob/main/heartbeat/httphandler/README.md), as heartbeats.
 - [Resources](https://github.com/mutablelogic/go-llm/blob/main/resource/httphandler/README.md).
 - [Connectors](https://github.com/mutablelogic/go-llm/blob/main/mcp/registry/httphandler/README.md).
+- [Workspaces](https://github.com/mutablelogic/go-llm/blob/main/workspace/httphandler/README.md): workspaces, and their folders and resources.
 
 ## Go
 
