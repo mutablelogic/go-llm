@@ -47,7 +47,7 @@ type ListWorkspaceRequest struct {
 // ReadWorkspaceRequest is the input of the workspace's read tool
 type ReadWorkspaceRequest struct {
 	URI    string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
-	Format string `json:"format,omitempty" enum:"raw,markdown" help:"raw, for the resource as it is, which is the default, or markdown, for its text, as Markdown, a part at a time, such as of a PDF, or an Office document, with its metadata"`
+	Format string `json:"format,omitempty" enum:"raw,markdown" help:"raw, for the resource as it is, which is the default, or markdown, for its text, as a Markdown document, a part at a time, such as of a PDF, or an Office document, whose YAML front matter has its metadata, and the offset of the next part"`
 	Offset uint64 `json:"offset,omitempty" help:"With markdown, the byte of its Markdown the part starts at, which is a part's next"`
 	Limit  uint64 `json:"limit,omitempty" help:"With markdown, the most bytes of its Markdown which are read"`
 }
@@ -227,7 +227,11 @@ func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 	case "", "raw":
 		return resource, nil
 	case "markdown":
-		return workspace.ReadMarkdown(ctx, resource, req.Offset, req.Limit)
+		part, err := workspace.ReadMarkdown(ctx, resource, req.Offset, req.Limit)
+		if err != nil {
+			return nil, err
+		}
+		return part.Document(), nil
 	default:
 		return nil, llm.ErrBadParameter.Withf("unknown format %q, which isn't raw or markdown", req.Format)
 	}

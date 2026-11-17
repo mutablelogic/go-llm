@@ -134,9 +134,14 @@ func (cmd *ToolCallCmd) Run(ctx server.Cmd) error {
 			return err
 		}
 
-		// Print the result as indented JSON, or nothing when the tool has no
-		// result
+		// Print the result as indented JSON, or text, as it is, such as a
+		// Markdown document, or nothing when the tool has no result
 		if result == nil {
+			return nil
+		}
+		var text string
+		if err := json.Unmarshal(result, &text); err == nil {
+			fmt.Println(text)
 			return nil
 		}
 		var buf bytes.Buffer

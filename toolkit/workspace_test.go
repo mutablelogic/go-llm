@@ -3,6 +3,7 @@ package toolkit_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	// Packages
@@ -103,13 +104,10 @@ func TestWorkspaces(t *testing.T) {
 		// As Markdown
 		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md","format":"markdown"}`))
 		require.NoError(t, err)
-		var part struct {
-			URI  string `json:"uri"`
-			Body string `json:"body"`
-		}
-		require.NoError(t, json.Unmarshal(result, &part))
-		assert.Equal(t, "resource://notes/file:///note.md", part.URI)
-		assert.Contains(t, part.Body, "Note")
+		var doc string
+		require.NoError(t, json.Unmarshal(result, &doc))
+		assert.True(t, strings.HasPrefix(doc, "---\nuri: \"resource://notes/file:///note.md\"\n"), doc)
+		assert.Contains(t, doc, "# Note")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"resource://notes/file:///note.md","format":"pdf"}`))
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
 	})
