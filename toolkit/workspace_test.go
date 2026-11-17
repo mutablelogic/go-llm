@@ -87,7 +87,7 @@ func TestWorkspaces(t *testing.T) {
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		result, err := tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"workspace":"notes","uri":"file:///note.md"}`))
+		result, err := tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md"}`))
 		require.NoError(t, err)
 		assert.Contains(t, string(result), "text/markdown")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///missing.md"}`))

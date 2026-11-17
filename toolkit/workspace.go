@@ -46,8 +46,7 @@ type ListWorkspaceRequest struct {
 
 // ReadWorkspaceRequest is the input of the workspace's read tool
 type ReadWorkspaceRequest struct {
-	Workspace string `json:"workspace,omitempty" help:"The workspace the resource is in, or empty to find it in any workspace"`
-	URI       string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
+	URI string `json:"uri" help:"The resource's URI, as it's listed, resource://<workspace>/<uri>"`
 }
 
 // WorkspaceMeta is a workspace, as the list tool lists it: its name, and
@@ -208,7 +207,8 @@ func (*readWorkspace) InputSchema() *jsonschema.Schema {
 	return jsonschema.MustFor[ReadWorkspaceRequest]()
 }
 
-// Run reads the resource, from its workspace, or any which has it
+// Run reads the resource, from the workspace its URI says, or, for its own
+// URI, whichever has it
 func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	var req ReadWorkspaceRequest
 	if err := unmarshalInput(input, &req); err != nil {
@@ -216,10 +216,7 @@ func (t *readWorkspace) Run(ctx context.Context, input json.RawMessage) (any, er
 	} else if strings.TrimSpace(req.URI) == "" {
 		return nil, llm.ErrBadParameter.With("missing uri")
 	}
-	if strings.TrimSpace(req.Workspace) == "" {
-		return t.toolkit.workspaces.Resolve(ctx, req.URI)
-	}
-	return t.toolkit.workspaces.Read(ctx, req.Workspace, req.URI)
+	return t.toolkit.workspaces.Resolve(ctx, req.URI)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
