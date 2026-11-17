@@ -251,3 +251,61 @@ func Test_WorkspaceWatch(t *testing.T) {
 		assert.NotContains(t, r.URI, "list-changed")
 	}
 }
+
+func Test_WorkspaceSubscribe(t *testing.T) {
+	// A workspace of an MCP server, which is served again, is subscribed
+	// to, as the second server's clients subscribe, so they're told it's
+	// updated
+	ctx := t.Context()
+	run := func(srv *server.Server) {
+		runCtx, cancel := context.WithCancel(ctx)
+		done := make(chan error, 1)
+		go func() { done <- srv.Run(runCtx) }()
+		t.Cleanup(func() {
+			cancel()
+			assert.NoError(t, <-done)
+		})
+	}
+	connectTo := func(srv *server.Server) *client.Client {
+		c, err := client.New("memory://files", client.WithTransport(srv.InMemoryTransport))
+		require.NoError(t, err)
+		require.NoError(t, c.Connect(ctx))
+		t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
+		return c
+	}
+
+	// The first server, and the second, which serves the first's workspace
+	source := &watched{files: files{"notes/a.md": "# A"}, changes: make(chan schema.Change)}
+	first, err := server.New(&tools{}, server.WithWorkspace(source))
+	require.NoError(t, err)
+	run(first)
+	upstream, err := workspace.NewClient(connectTo(first))
+	require.NoError(t, err)
+	second, err := server.New(&tools{}, server.WithWorkspace(upstream))
+	require.NoError(t, err)
+	run(second)
+
+	// A client of the second subscribes, and is told of an update
+	downstream, err := workspace.NewClient(connectTo(second))
+	require.NoError(t, err)
+	changes := make(chan schema.Change, 4)
+	watchCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	go func() { _ = downstream.(workspace.Watcher).Watch(watchCtx, changes) }()
+	require.NoError(t, downstream.(workspace.Subscriber).Subscribe(ctx, "file:///notes/a.md"))
+	deadline := time.After(5 * time.Second)
+	for {
+		source.changes <- schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}
+		select {
+		case change := <-changes:
+			if change.URI == "" {
+				continue
+			}
+			assert.Equal(t, schema.Change{Action: eventschema.EventUpdate, URI: "file:///notes/a.md"}, change)
+			return
+		case <-time.After(50 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("the update didn't reach the second server's client")
+		}
+	}
+}

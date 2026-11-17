@@ -31,7 +31,7 @@ type contents struct {
 }
 
 var _ Reader = (*clientWorkspace)(nil)
-var _ Watcher = (*clientWorkspace)(nil)
+var _ Subscriber = (*clientWorkspace)(nil)
 var _ llm.Resource = (*contents)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -90,8 +90,19 @@ func (w *clientWorkspace) Read(ctx context.Context, uri string) (llm.Resource, e
 	return &contents{uri: uri, name: path.Base(strings.TrimSuffix(uri, "/")), mimeType: c.MIMEType, data: data}, nil
 }
 
+// Subscribe asks the server for the resource with the URI's updates
+func (w *clientWorkspace) Subscribe(ctx context.Context, uri string) error {
+	return w.client.Subscribe(ctx, uri)
+}
+
+// Unsubscribe stops asking the server for the resource with the URI's
+// updates
+func (w *clientWorkspace) Unsubscribe(ctx context.Context, uri string) error {
+	return w.client.Unsubscribe(ctx, uri)
+}
+
 // Watch sends the server's resources which are updated, which were
-// subscribed to, with the client's Subscribe, and, without a URI, that its
+// subscribed to, with Subscribe, and, without a URI, that its
 // resources changed, when it says its list did, until the context is
 // cancelled, when it returns nil
 func (w *clientWorkspace) Watch(ctx context.Context, ch chan<- schema.Change) error {

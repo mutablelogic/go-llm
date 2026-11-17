@@ -39,21 +39,57 @@ func (s *Server) capabilities() *sdkmcp.ServerCapabilities {
 
 // subscribe returns the handler of a client's subscription to a resource,
 // which the SDK keeps, so it's told when it's updated, when the workspace
-// changes, or nil, when it doesn't
+// changes, or nil, when it doesn't. A workspace which is a Subscriber, such
+// as an MCP server's, is subscribed to, once, while any of the server's
+// clients are.
 func (s *Server) subscribe() func(context.Context, *sdkmcp.SubscribeRequest) error {
 	if _, ok := s.workspace.(workspace.Watcher); !ok {
 		return nil
 	}
-	return func(context.Context, *sdkmcp.SubscribeRequest) error { return nil }
+	return func(ctx context.Context, req *sdkmcp.SubscribeRequest) error {
+		subscriber, ok := s.workspace.(workspace.Subscriber)
+		if !ok || req.Params == nil {
+			return nil
+		}
+		uri := req.Params.URI
+		s.subscribing.Lock()
+		defer s.subscribing.Unlock()
+		if s.subscriptions[uri] == 0 {
+			if err := subscriber.Subscribe(ctx, uri); err != nil {
+				return err
+			}
+		}
+		s.subscriptions[uri]++
+		return nil
+	}
 }
 
 // unsubscribe returns the handler of a client's unsubscription, as
-// subscribe does
+// subscribe does, which unsubscribes from a Subscriber once none of the
+// server's clients are subscribed
 func (s *Server) unsubscribe() func(context.Context, *sdkmcp.UnsubscribeRequest) error {
 	if _, ok := s.workspace.(workspace.Watcher); !ok {
 		return nil
 	}
-	return func(context.Context, *sdkmcp.UnsubscribeRequest) error { return nil }
+	return func(ctx context.Context, req *sdkmcp.UnsubscribeRequest) error {
+		subscriber, ok := s.workspace.(workspace.Subscriber)
+		if !ok || req.Params == nil {
+			return nil
+		}
+		uri := req.Params.URI
+		s.subscribing.Lock()
+		defer s.subscribing.Unlock()
+		switch s.subscriptions[uri] {
+		case 0:
+			return nil
+		case 1:
+			delete(s.subscriptions, uri)
+			return subscriber.Unsubscribe(ctx, uri)
+		default:
+			s.subscriptions[uri]--
+			return nil
+		}
+	}
 }
 
 // changed tells the clients of the workspace's change: a resource which is
