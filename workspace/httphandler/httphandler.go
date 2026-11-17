@@ -54,7 +54,7 @@ func workspaceListHandlers(workspaces *workspace.Registry, router *httprouter.Ro
 	return router.Register("llm/workspace", nil, func(path httprequest.PathItem) {
 		path.Tag(taggroup.Workspaces)
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
-			httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), workspaces.ListWorkspaces())
+			httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), workspaces.ListWorkspaces(r.Context()))
 		}, func(op httprequest.PathOperation) {
 			op.Summary("List Workspaces")
 			op.Description(documentation.Section(3, "GET /llm/workspace").Body)
@@ -68,7 +68,7 @@ func workspaceGetHandlers(workspaces *workspace.Registry, router *httprouter.Rou
 		path.Tag(taggroup.Workspaces)
 		path.Get(func(w http.ResponseWriter, r *http.Request) {
 			name := r.PathValue("name")
-			if ws, err := workspaces.GetWorkspace(name); err != nil {
+			if ws, err := workspaces.GetWorkspace(r.Context(), name); err != nil {
 				httpresponse.Error(w, llm.HTTPErr(err), name)
 			} else {
 				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(r), ws)

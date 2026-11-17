@@ -83,3 +83,16 @@ meta:
 	doc = schema.Markdown{URI: "file:///a.html", Note: "No text"}.Document()
 	assert.Equal(t, "---\nuri: \"file:///a.html\"\noffset: 0\nnote: \"No text\"\n---\n", doc)
 }
+
+func Test_Query(t *testing.T) {
+	// A request's folder, and cursor, are as they are, with their spaces,
+	// and fields which aren't set are left out
+	req := schema.ListRequest{Path: " my notes ", Recursive: true, Cursor: " opaque= ", Limit: 5}
+	q := req.Query()
+	assert.Equal(t, " my notes ", q.Get("path"))
+	assert.Equal(t, "true", q.Get("recursive"))
+	assert.Equal(t, " opaque= ", q.Get("cursor"))
+	assert.Equal(t, "5", q.Get("limit"))
+	assert.Empty(t, schema.ListRequest{}.Query())
+	assert.Equal(t, "   ", schema.ListRequest{Path: "   "}.Query().Get("path"), "a folder whose name is spaces")
+}
