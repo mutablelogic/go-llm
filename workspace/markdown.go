@@ -123,7 +123,7 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 	// which is go-metadata's
 	result := &schema.Markdown{URI: resource.URI(), Type: resource.Type(), Offset: offset}
 	if size, ok := llm.ContentLength(resource); ok {
-		result.Size = &size
+		result.ContentSize = &size
 	}
 	var hasBody bool
 	for _, entry := range meta {
@@ -149,6 +149,11 @@ func ReadMarkdown(ctx context.Context, resource llm.Resource, offset, limit uint
 				result.Next = &value
 			}
 		}
+	}
+	if hasBody && result.Next == nil {
+		// The last part, whose end is the Markdown's
+		length := result.Offset + uint64(len(result.Body))
+		result.Length = &length
 	}
 	if !hasBody {
 		return nil, llm.ErrNotImplemented.Withf("no Markdown of type %q", mediatype)

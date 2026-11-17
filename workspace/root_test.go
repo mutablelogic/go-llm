@@ -52,3 +52,16 @@ func Test_Root(t *testing.T) {
 	_, err = r.Resolve(ctx, "resource://notes/other.md")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
+
+func Test_ReadErrorURI(t *testing.T) {
+	// An error names the resource by the URI it was asked for by, rather
+	// than the workspace's own
+	ctx := context.Background()
+	r, err := workspace.New()
+	require.NoError(t, err)
+	require.NoError(t, r.Add("notes", rooted{}))
+	_, err = r.Resolve(ctx, "resource://notes/missing.md")
+	require.ErrorIs(t, err, llm.ErrNotFound)
+	assert.Contains(t, err.Error(), "resource://notes/missing.md")
+	assert.NotContains(t, err.Error(), "file:///missing.md")
+}

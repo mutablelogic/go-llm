@@ -95,6 +95,7 @@ func Test_Workspace(t *testing.T) {
 		assert.ErrorIs(t, err, llm.ErrNotFound)
 		_, err = m.Read(ctx, memory.MemoriesURI)
 		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		assert.ErrorContains(t, err, `list it, with the path "memories"`)
 	})
 
 	t.Run("Watch", func(t *testing.T) {

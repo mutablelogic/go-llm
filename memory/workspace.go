@@ -148,7 +148,7 @@ func (m *Memory) Read(ctx context.Context, uri string) (llm.Resource, error) {
 	case uri == DetailsURI:
 		return m.detailsDocument(), nil
 	case uri == MemoriesURI || uri == strings.TrimSuffix(MemoriesURI, "/"):
-		return nil, llm.ErrBadParameter.Withf("%s is a folder", uri)
+		return nil, llm.ErrBadParameter.Withf("%s is a folder: list it, with the path %q, rather than read it", uri, memoriesFolder)
 	}
 	key, ok := strings.CutPrefix(uri, MemoriesURI)
 	if !ok || !strings.HasSuffix(key, ".md") {

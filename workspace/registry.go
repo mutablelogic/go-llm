@@ -224,6 +224,7 @@ func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Res
 	)
 	defer func() { endSpan(err) }()
 
+	asked := uri
 	workspace, rest, isWorkspaces := schema.ParseURI(uri)
 	if isWorkspaces && workspace != name {
 		return nil, llm.ErrNotFound.Withf("resource %q isn't in workspace %q", uri, name)
@@ -242,7 +243,7 @@ func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Res
 		return err
 	})
 	if err != nil {
-		return nil, err
+		return nil, askedURI(err, uri, asked)
 	}
 	return withURI(resource, schema.URIOf(name, root, uri)), nil
 }
@@ -565,6 +566,21 @@ func cursorOf(name string, req schema.ListRequest) (listCursor, error) {
 		return listCursor{}, llm.ErrBadParameter.Withf("cursor is of type %q, not %q: pass the type it was listed with", result.Type, want.Type)
 	}
 	return result, nil
+}
+
+// askedURI returns the error, which names the resource by its own URI, as
+// its workspace has it, naming it by the URI as it was asked for, so it's
+// read again by that, keeping its kind
+func askedURI(err error, own, asked string) error {
+	if own == asked || !strings.Contains(err.Error(), own) {
+		return err
+	}
+	var kind llm.Err
+	if !errors.As(err, &kind) {
+		return err
+	}
+	reason := strings.TrimPrefix(err.Error(), kind.Error()+": ")
+	return kind.With(strings.ReplaceAll(reason, own, asked))
 }
 
 // rootOf returns the root of the workspace's resources' URIs, or nothing,
