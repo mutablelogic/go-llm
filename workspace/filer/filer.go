@@ -9,8 +9,10 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"net/url"
 	"path"
 	"strings"
+	"sync"
 
 	// Packages
 	gofiler "github.com/mutablelogic/go-filer"
@@ -26,10 +28,15 @@ import (
 
 // Workspace is the workspace of a go-filer backend: its folders, and files,
 // whose URIs are file:// and their paths, such as file:///notes/a.md, and
-// file:///notes/, for a folder
+// file:///notes/, for a folder, which are percent-encoded
 type Workspace struct {
 	name  string
 	filer gofiler.Filer
+
+	// The paths of the folders which were listed, or created, so a folder
+	// which is deleted is said to be, by its URI, as the backend doesn't
+	// say whether what's deleted was a folder
+	folders sync.Map
 }
 
 // readyWatcher is a backend which says when it's watching, as go-filer's
@@ -117,8 +124,11 @@ func (w *Workspace) List(ctx context.Context, req schema.ListRequest) (*schema.L
 		// The cursor of a folder is its path, and a slash, as the backend
 		// orders a folder, before what's in it
 		last = obj.Path
-		if obj.IsDir && !strings.HasSuffix(last, "/") {
-			last += "/"
+		if obj.IsDir {
+			w.folders.Store(strings.TrimSuffix(obj.Path, "/"), true)
+			if !strings.HasSuffix(last, "/") {
+				last += "/"
+			}
 		}
 		result.Body = append(result.Body, resourceOf(obj))
 	}
@@ -143,7 +153,7 @@ func (w *Workspace) Read(ctx context.Context, uri string) (llm.Resource, error) 
 	} else if obj.IsDir {
 		return nil, llm.ErrBadParameter.Withf("%s is a folder", uri)
 	}
-	resource := &object{uri: uriOf(obj), name: path.Base(obj.Path), mimeType: obj.ContentType, size: -1, read: read}
+	resource := &object{uri: uriOf(obj.Path, false), name: path.Base(obj.Path), mimeType: obj.ContentType, size: -1, read: read}
 	if obj.Size != nil {
 		resource.size = *obj.Size
 	}
@@ -155,7 +165,8 @@ func (w *Workspace) Read(ctx context.Context, uri string) (llm.Resource, error) 
 // backend says a folder's changes may have been missed, to the channel,
 // until the context is cancelled, when it returns nil. It sends a change
 // without a URI first, once it's watching. Returns ErrNotImplemented when
-// the backend doesn't watch its objects.
+// the backend doesn't watch its objects, or doesn't say when it's watching,
+// so a change made once it's said to be isn't missed.
 func (w *Workspace) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
 	if ch == nil {
 		return llm.ErrBadParameter.With("missing channel")
@@ -171,16 +182,15 @@ func (w *Workspace) WatchResources(ctx context.Context, ch chan<- schema.Change)
 	// The backend's events, which are sent as changes, as they're watched
 	events := make(chan filerschema.Event, 16)
 	done := make(chan error, 1)
-	if watcher, ok := w.filer.(readyWatcher); ok {
-		go func() { done <- watcher.WatchObjectsReady(ctx, events, func() { send(listAgain) }) }()
-	} else {
-		go func() { done <- w.filer.WatchObjects(ctx, events) }()
-		send(listAgain)
+	watcher, ok := w.filer.(readyWatcher)
+	if !ok {
+		return llm.ErrNotImplemented.With("the backend doesn't say when it's watching")
 	}
+	go func() { done <- watcher.WatchObjectsReady(ctx, events, func() { send(listAgain) }) }()
 	for {
 		select {
 		case event := <-events:
-			if change, ok := changeOf(event); ok {
+			if change, ok := w.changeOf(ctx, event); ok {
 				send(change)
 			}
 		case err := <-done:
@@ -203,30 +213,68 @@ func (o *object) Type() string        { return o.mimeType }
 // ContentLength returns the file's length, or -1, when it isn't known
 func (o *object) ContentLength() int64 { return o.size }
 
-// Read returns the function which reads the file's content
+// Read returns the function which reads the file's content, whose error,
+// as the file is opened as it's read, is the llm error of its kind
 func (o *object) Read(context.Context) (llm.ReadFunc, error) {
-	return llm.ReadFunc(o.read), nil
+	return func(ctx context.Context, fn func(io.Reader) error) error {
+		return llmError(o.read(ctx, fn))
+	}, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE METHODS
+
+// changeOf returns the backend's event as a change: an object which is
+// created, updated, or deleted, by its URI, which is a folder's, when it's
+// one, or, as a folder's changes may have been missed, or what changed is
+// gone before it's known whether it's a folder, that they changed, but not
+// which
+func (w *Workspace) changeOf(ctx context.Context, event filerschema.Event) (schema.Change, bool) {
+	p := strings.TrimSuffix(event.Path, "/")
+	switch event.EventType {
+	case filerschema.EventTypeCreated, filerschema.EventTypeUpdated:
+		obj, err := w.filer.GetObject(ctx, filerschema.GetObjectRequest{ObjectKey: event.ObjectKey})
+		if err != nil {
+			return schema.Change{Action: eventschema.EventUpdate}, true
+		} else if obj.IsDir {
+			w.folders.Store(p, true)
+		}
+		action := eventschema.EventCreate
+		if event.EventType == filerschema.EventTypeUpdated {
+			action = eventschema.EventUpdate
+		}
+		return schema.Change{Action: action, URI: uriOf(p, obj.IsDir)}, true
+	case filerschema.EventTypeDeleted:
+		_, folder := w.folders.LoadAndDelete(p)
+		return schema.Change{Action: eventschema.EventDelete, URI: uriOf(p, folder)}, true
+	case filerschema.EventTypeRescan:
+		return schema.Change{Action: eventschema.EventUpdate}, true
+	}
+	return schema.Change{}, false
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
-// uriOf returns the URI of the object: file://, and its path, which, for a
-// folder, ends with a slash
-func uriOf(obj *filerschema.Object) string {
-	p := obj.Path
-	if obj.IsDir && !strings.HasSuffix(p, "/") {
+// uriOf returns the URI of the path: file://, and the path, percent-encoded,
+// which, for a folder, ends with a slash
+func uriOf(p string, folder bool) string {
+	if folder && !strings.HasSuffix(p, "/") {
 		p += "/"
 	}
-	return uriPrefix + p
+	return (&url.URL{Scheme: "file", Path: p}).String()
 }
 
-// pathOf returns the path of the URI of a file, or a folder, and true, or
-// false, when it isn't one
+// pathOf returns the path of the URI of a file, or a folder, decoded, and
+// true, or false, when it isn't one. A URI which isn't percent-encoded, such
+// as one which is typed, with a # or a %, is its path as it is.
 func pathOf(uri string) (string, bool) {
 	p, ok := strings.CutPrefix(uri, uriPrefix)
 	if !ok || !strings.HasPrefix(p, "/") {
 		return "", false
+	}
+	if u, err := url.Parse(uri); err == nil && u.Host == "" && u.RawQuery == "" && u.Fragment == "" && !u.ForceQuery {
+		p = u.Path
 	}
 	if p != "/" {
 		p = strings.TrimSuffix(p, "/")
@@ -239,7 +287,7 @@ func pathOf(uri string) (string, bool) {
 // metadata
 func resourceOf(obj *filerschema.Object) schema.ResourceMeta {
 	r := schema.ResourceMeta{
-		URI:      uriOf(obj),
+		URI:      uriOf(obj.Path, obj.IsDir),
 		Name:     path.Base(obj.Path),
 		Type:     obj.ContentType,
 		Modified: obj.ModTime,
@@ -266,24 +314,6 @@ func metaOf(m filerschema.Meta) schema.Meta {
 		result.Text = string(m.Value)
 	}
 	return result
-}
-
-// changeOf returns the backend's event as a change: an object which is
-// created, updated, or deleted, by its URI, or, as a folder's changes may
-// have been missed, that they changed, but not which
-func changeOf(event filerschema.Event) (schema.Change, bool) {
-	uri := uriPrefix + event.Path
-	switch event.EventType {
-	case filerschema.EventTypeCreated:
-		return schema.Change{Action: eventschema.EventCreate, URI: uri}, true
-	case filerschema.EventTypeUpdated:
-		return schema.Change{Action: eventschema.EventUpdate, URI: uri}, true
-	case filerschema.EventTypeDeleted:
-		return schema.Change{Action: eventschema.EventDelete, URI: uri}, true
-	case filerschema.EventTypeRescan:
-		return schema.Change{Action: eventschema.EventUpdate}, true
-	}
-	return schema.Change{}, false
 }
 
 // llmError returns go-filer's error as the llm error of its kind

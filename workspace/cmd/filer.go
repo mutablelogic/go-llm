@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,9 +19,25 @@ import (
 	namespace "github.com/mutablelogic/go-llm/mcp/namespace"
 	mcpserver "github.com/mutablelogic/go-llm/mcp/server"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	workspace "github.com/mutablelogic/go-llm/workspace"
 	filer "github.com/mutablelogic/go-llm/workspace/filer"
+	schema "github.com/mutablelogic/go-llm/workspace/schema"
 	server "github.com/mutablelogic/go-server"
 )
+
+///////////////////////////////////////////////////////////////////////////////
+// TYPES
+
+// filerNamespace is the namespace of the filer's server, whose resources'
+// changes are all of its backend's, as it's in the same process, rather
+// than those of the resources its client subscribed to, which an MCP
+// client's are, so a file which is edited is said to be, once it's watching
+type filerNamespace struct {
+	*namespace.Namespace
+	workspace *filer.Workspace
+}
+
+var _ workspace.Watcher = (*filerNamespace)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -52,7 +69,10 @@ func (flags FilerFlags) WithFiler(ctx server.Cmd, tools *toolkit.Toolkit, fn fun
 	if err != nil {
 		return err
 	}
-	description := fmt.Sprintf("The files in %s", dir)
+	description := strings.TrimSpace(flags.Description)
+	if description == "" {
+		description = fmt.Sprintf("The files in %s", dir)
+	}
 
 	// The backend of the folder, and its server
 	backend, err := filerfs.New(FilerName, dir, nil, gofiler.Opts{Tracer: ctx.Tracer()})
@@ -81,10 +101,11 @@ func (flags FilerFlags) WithFiler(ctx server.Cmd, tools *toolkit.Toolkit, fn fun
 		return err
 	}
 	defer disconnect()
-	if err := tools.Add(ns); err != nil {
+	files := &filerNamespace{Namespace: ns, workspace: srv.Workspace()}
+	if err := tools.Add(files); err != nil {
 		return err
 	}
-	defer tools.Remove(ns)
+	defer tools.Remove(files)
 	ctx.Logger().InfoContext(ctx.Context(), "workspace added", "namespace", FilerName, "dir", dir)
 
 	// Call the function with the server
@@ -161,4 +182,12 @@ func connectFiler(ctx context.Context, logger *slog.Logger, ns *namespace.Namesp
 		wg.Wait()
 		_ = c.Disconnect()
 	}, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// FILER NAMESPACE
+
+// WatchResources sends the backend's changes, as its workspace does
+func (n *filerNamespace) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
+	return n.workspace.WatchResources(ctx, ch)
 }

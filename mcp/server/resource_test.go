@@ -305,6 +305,10 @@ func Test_WorkspaceWatch(t *testing.T) {
 			source.changes <- change
 			select {
 			case got := <-changes:
+				if got.URI == "" && change.Action == eventschema.EventUpdate && change.URI != "" {
+					// The list changed, as the server started watching
+					continue
+				}
 				return got
 			case <-time.After(50 * time.Millisecond):
 			case <-deadline:
