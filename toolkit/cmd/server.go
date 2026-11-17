@@ -86,6 +86,7 @@ func (flags Flags) WithToolkit(ctx server.Cmd, srv *servercmd.RunServer, fn func
 	if err != nil {
 		return err
 	}
+	defer tools.Close()
 
 	// Add the tools whose credentials are set
 	if err := AddTools(ctx, tools); err != nil {

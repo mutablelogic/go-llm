@@ -37,10 +37,15 @@ type Toolkit struct {
 	// The namespaces which have been added, by name
 	namespaces map[string]Namespace
 
-	// The tools, by canonical name
+	// The tools, by canonical name, and their canonical names, by namespace
 	tools map[string]entry
+	index map[string]map[string]bool
 
-	// The cancels of the watches of the namespaces' tools, by name
+	// The lifetime of the watches of the namespaces' tools, which ends when
+	// the context New is called with is cancelled, or Close is called, and
+	// the cancels of each namespace's, by name
+	ctx     context.Context
+	cancel  context.CancelFunc
 	watches map[string]context.CancelFunc
 }
 
@@ -124,11 +129,13 @@ type entry struct {
 ////////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// New returns a toolkit with the options
+// New returns a toolkit with the options, which watches its namespaces'
+// tools until the context is cancelled, or Close is called
 func New(ctx context.Context, opts ...Opt) (_ *Toolkit, err error) {
 	self := &Toolkit{
 		namespaces: make(map[string]Namespace),
 		tools:      make(map[string]entry),
+		index:      make(map[string]map[string]bool),
 		watches:    make(map[string]context.CancelFunc),
 	}
 
@@ -136,6 +143,7 @@ func New(ctx context.Context, opts ...Opt) (_ *Toolkit, err error) {
 	if err := self.opt.apply(opts); err != nil {
 		return nil, err
 	}
+	self.ctx, self.cancel = context.WithCancel(ctx)
 
 	// Trace creating the toolkit, which needs the tracer from the options
 	_, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.New")
@@ -184,11 +192,11 @@ func (self *Toolkit) Add(ns Namespace) error {
 	// Add the namespace and its tools, which are created, and be told when
 	// its tools change
 	self.namespaces[namespace] = ns
-	for name, entry := range entries {
-		self.tools[schema.CanonicalToolName(namespace, name)] = entry
+	for _, name := range slices.Sorted(maps.Keys(entries)) {
+		self.set(schema.CanonicalToolName(namespace, name), entries[name])
 		self.publish(eventschema.EventCreate, schema.CanonicalToolName(namespace, name))
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(self.ctx)
 	self.watches[namespace] = cancel
 	go self.watch(ctx, ns)
 
@@ -215,12 +223,17 @@ func (self *Toolkit) Remove(ns Namespace) error {
 		cancel()
 		delete(self.watches, name)
 	}
-	for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
-		if self.tools[canonical].namespace == name {
-			delete(self.tools, canonical)
-			self.publish(eventschema.EventDelete, canonical)
-		}
+	for _, canonical := range slices.Sorted(maps.Keys(self.index[name])) {
+		self.unset(canonical)
+		self.publish(eventschema.EventDelete, canonical)
 	}
+	return nil
+}
+
+// Close stops watching the namespaces' tools, which are still read as the
+// toolkit is asked for them, but whose changes aren't published
+func (self *Toolkit) Close() error {
+	self.cancel()
 	return nil
 }
 
@@ -308,10 +321,19 @@ func (self *Toolkit) current() {
 	}
 }
 
+// currentNamespace changes the tools of the namespace with the name, when
+// there is one, as current does. The caller holds the lock.
+func (self *Toolkit) currentNamespace(name string) {
+	if ns, exists := self.namespaces[name]; exists {
+		self.sync(ns, "")
+	}
+}
+
 // sync changes the namespace's tools to those its Tools returns now, and
 // publishes each which is created, updated, or deleted. A tool is updated
 // when it's another value than it was, as Tools returns the same value for
-// a tool which didn't change, or, when it can't be compared, when the
+// a tool which didn't change. One which can't be compared is changed each
+// time, so it's as it is, but is only published as updated when the
 // namespace says it was, by its name. One which isn't valid, so can't be
 // called, isn't there. The caller holds the lock.
 func (self *Toolkit) sync(ns Namespace, updated string) {
@@ -324,30 +346,59 @@ func (self *Toolkit) sync(ns Namespace, updated string) {
 		canonical := schema.CanonicalToolName(namespace, tool.Name())
 		seen[canonical] = true
 		existing, existed := self.tools[canonical]
+		publish := !existed
 		if existed {
-			if same, ok := sameTool(existing.tool, tool); same || (!ok && tool.Name() != updated) {
+			same, ok := sameTool(existing.tool, tool)
+			if same {
 				continue
 			}
+			publish = ok || tool.Name() == updated
 		}
 		entry, err := newEntry(namespace, tool)
 		switch {
 		case err != nil && existed:
-			delete(self.tools, canonical)
+			self.unset(canonical)
 			self.publish(eventschema.EventDelete, canonical)
 		case err != nil:
 		case existed:
-			self.tools[canonical] = entry
-			self.publish(eventschema.EventUpdate, canonical)
+			self.set(canonical, entry)
+			if publish {
+				self.publish(eventschema.EventUpdate, canonical)
+			}
 		default:
-			self.tools[canonical] = entry
+			self.set(canonical, entry)
 			self.publish(eventschema.EventCreate, canonical)
 		}
 	}
-	for _, canonical := range slices.Sorted(maps.Keys(self.tools)) {
-		if self.tools[canonical].namespace == namespace && !seen[canonical] {
-			delete(self.tools, canonical)
+	for _, canonical := range slices.Sorted(maps.Keys(self.index[namespace])) {
+		if !seen[canonical] {
+			self.unset(canonical)
 			self.publish(eventschema.EventDelete, canonical)
 		}
+	}
+}
+
+// set sets the tool with the canonical name, in its namespace's index. The
+// caller holds the lock.
+func (self *Toolkit) set(canonical string, e entry) {
+	self.tools[canonical] = e
+	if self.index[e.namespace] == nil {
+		self.index[e.namespace] = make(map[string]bool)
+	}
+	self.index[e.namespace][canonical] = true
+}
+
+// unset removes the tool with the canonical name, and from its namespace's
+// index. The caller holds the lock.
+func (self *Toolkit) unset(canonical string) {
+	e, exists := self.tools[canonical]
+	if !exists {
+		return
+	}
+	delete(self.tools, canonical)
+	delete(self.index[e.namespace], canonical)
+	if len(self.index[e.namespace]) == 0 {
+		delete(self.index, e.namespace)
 	}
 }
 

@@ -158,3 +158,58 @@ func TestNotifyWithoutBroadcaster(t *testing.T) {
 		return err == nil
 	}, 5*time.Second, 5*time.Millisecond)
 }
+
+// sliceTool is a tool which can't be compared, as it has a slice
+type sliceTool struct {
+	echoTool
+	tags []string
+}
+
+func TestUncomparable(t *testing.T) {
+	// A tool which can't be compared is as the namespace returns it now,
+	// without being published as updated, until the namespace says it was
+	ctx := context.Background()
+	b := broadcaster.New()
+	ch := make(chan eventschema.Event, 16)
+	watchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	_, err := b.Watch(watchCtx, ch)
+	require.NoError(t, err)
+	tk, err := toolkit.New(ctx, toolkit.WithBroadcaster(b))
+	require.NoError(t, err)
+	ns := &changingNamespace{tools: []llm.Tool{sliceTool{echoTool: echoTool{name: "tool"}}}}
+	require.NoError(t, tk.Add(ns))
+	assert.Equal(t, []eventschema.Event{toolEvent(eventschema.EventCreate, "changing:tool")}, next(t, ch, 1))
+
+	// It's replaced, without being said, and is called as it is now
+	ns.set(eventschema.EventUpdate, "tool", false, sliceTool{echoTool: echoTool{name: "tool", err: llm.ErrForbidden}})
+	_, err = tk.CallTool(ctx, "changing:tool", nil)
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+	assert.Empty(t, drain(ch))
+
+	// And is published, once it's said, which is said until the toolkit is
+	// watching, as it starts to once it's added
+	require.Eventually(t, func() bool {
+		ns.set(eventschema.EventUpdate, "tool", true, sliceTool{echoTool: echoTool{name: "tool", err: llm.ErrForbidden}})
+		select {
+		case event := <-ch:
+			return assert.Equal(t, toolEvent(eventschema.EventUpdate, "changing:tool"), event)
+		case <-time.After(10 * time.Millisecond):
+			return false
+		}
+	}, 5*time.Second, time.Millisecond)
+}
+
+func TestClose(t *testing.T) {
+	// Once it's closed, a toolkit doesn't watch its namespaces, but still
+	// reads their tools, as it's asked for them
+	ctx := context.Background()
+	tk, err := toolkit.New(ctx)
+	require.NoError(t, err)
+	ns := &changingNamespace{}
+	require.NoError(t, tk.Add(ns))
+	require.NoError(t, tk.Close())
+	ns.set(eventschema.EventCreate, "tool", true, echoTool{name: "tool"})
+	_, err = tk.Tools(ctx, "changing:tool")
+	assert.NoError(t, err)
+}

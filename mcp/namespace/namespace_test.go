@@ -240,3 +240,23 @@ func (w *watcher) next(t *testing.T, n int) []string {
 	}
 	return result
 }
+
+func Test_Reconnect(t *testing.T) {
+	// Connecting with another client, whose server has the same tools,
+	// updates them, so they're called with the new client, once the old one
+	// is disconnected
+	ctx := t.Context()
+	server := newServer(t)
+	first, err := client.New(server.URL)
+	require.NoError(t, err)
+	require.NoError(t, first.Connect(ctx))
+	ns := connected(t, first, func(name string) bool { return name == "echo" })
+	w := watch(t, ns)
+	w.next(t, 1)
+	second := connect(t, server)
+	require.NoError(t, ns.Connect(ctx, second, "Test server", func(name string) bool { return name == "echo" }, 2))
+	assert.Equal(t, []string{"update echo"}, w.next(t, 1))
+	require.NoError(t, first.Disconnect())
+	_, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"hi"}`))
+	assert.NoError(t, err)
+}

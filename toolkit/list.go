@@ -44,7 +44,11 @@ func (self *Toolkit) ListTools(ctx context.Context, req schema.ToolListRequest) 
 	// The tools in the namespace, or all the tools, of the type, or any, in
 	// order of canonical name
 	self.mu.Lock()
-	self.current()
+	if namespace != "" {
+		self.currentNamespace(namespace)
+	} else {
+		self.current()
+	}
 	all := make([]*schema.Tool, 0, len(self.tools))
 	for _, name := range slices.Sorted(maps.Keys(self.tools)) {
 		entry := self.tools[name]
