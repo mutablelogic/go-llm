@@ -111,7 +111,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// Follow the workspace's changes, too, when it says them
 	changes := make(chan schema.Change, 16)
 	if watcher, ok := s.workspace.(workspace.Watcher); ok {
-		go func() { done <- watcher.Watch(ctx, changes) }()
+		go func() { done <- watcher.WatchResources(ctx, changes) }()
 	}
 	s.sync()
 	watching := false

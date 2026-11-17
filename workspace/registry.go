@@ -272,7 +272,7 @@ func (r *Registry) All() iter.Seq2[string, Workspace] {
 func (r *Registry) watch(ctx context.Context, name string, w *watch, watcher Watcher, ready chan struct{}) {
 	ch := make(chan schema.Change, 16)
 	done := make(chan error, 1)
-	go func() { done <- watcher.Watch(ctx, ch) }()
+	go func() { done <- watcher.WatchResources(ctx, ch) }()
 
 	// Once it ends, such as when it fails, or the registry is closed, it
 	// isn't watched, unless it's been watched again since. This is done

@@ -138,7 +138,7 @@ type changing struct {
 	changes chan schema.Change
 }
 
-func (c changing) Watch(ctx context.Context, ch chan<- schema.Change) error {
+func (c changing) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
 	// It's watching, which is said first
 	select {
 	case ch <- schema.Change{Action: eventschema.EventUpdate}:
@@ -243,7 +243,7 @@ type ending struct {
 	changes chan schema.Change
 }
 
-func (e ending) Watch(ctx context.Context, ch chan<- schema.Change) error {
+func (e ending) WatchResources(ctx context.Context, ch chan<- schema.Change) error {
 	ch <- schema.Change{Action: eventschema.EventUpdate}
 	select {
 	case change := <-e.changes:
