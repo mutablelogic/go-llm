@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -129,20 +130,25 @@ func (m *Messaging) SessionPrompt(ctx context.Context, session uuid.UUID) string
 	return strings.ReplaceAll(sessionPrompt, "{channels}", channelNames(channels))
 }
 
-// Notify does nothing, as the tools don't change
 // Type returns that the namespace's tools are built in
 func (*Messaging) Type() string { return toolschema.NamespaceBuiltin }
 
-func (*Messaging) Notify(func(eventschema.EventAction, string)) {}
+// Watch sends the namespace's tools, which don't change
+func (ns *Messaging) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return toolkit.WatchTools(ctx, ch, ns.Tools())
+}
 
 // Tools returns the messaging tools
 func (m *Messaging) Tools() []llm.Tool {
-	return []llm.Tool{
-		&connectTool{messaging: m},
-		&listTool{messaging: m},
-		&sendTool{messaging: m},
-		&disconnectTool{messaging: m},
-	}
+	m.toolsOnce.Do(func() {
+		m.tools = []llm.Tool{
+			&connectTool{messaging: m},
+			&listTool{messaging: m},
+			&sendTool{messaging: m},
+			&disconnectTool{messaging: m},
+		}
+	})
+	return slices.Clone(m.tools)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -116,13 +116,15 @@ func (n countingNamespace) SystemPrompt() string {
 	return fmt.Sprint("Read ", n.reads.Add(1), " times.")
 }
 
-// Notify does nothing, as the namespace's tools don't change
 func (countingNamespace) Description() string { return "" }
 
 // Type returns that the namespace's tools are built in
 func (countingNamespace) Type() string { return toolschema.NamespaceBuiltin }
 
-func (countingNamespace) Notify(func(eventschema.EventAction, string)) {}
+// Watch sends the namespace's tools, which don't change
+func (n countingNamespace) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return toolkit.WatchTools(ctx, ch, n.Tools())
+}
 
 func Test_SystemPromptsReadOnce(t *testing.T) {
 	// A namespace's system prompt is read once, however many names select

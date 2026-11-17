@@ -43,7 +43,12 @@ func (self *Toolkit) ListTools(ctx context.Context, req schema.ToolListRequest) 
 
 	// The tools in the namespace, or all the tools, of the type, or any, in
 	// order of canonical name
-	self.mu.RLock()
+	self.mu.Lock()
+	if namespace != "" {
+		self.currentNamespace(namespace)
+	} else {
+		self.current()
+	}
 	all := make([]*schema.Tool, 0, len(self.tools))
 	for _, name := range slices.Sorted(maps.Keys(self.tools)) {
 		entry := self.tools[name]
@@ -58,7 +63,7 @@ func (self *Toolkit) ListTools(ctx context.Context, req schema.ToolListRequest) 
 			all = append(all, entry.wire(entryType))
 		}
 	}
-	self.mu.RUnlock()
+	self.mu.Unlock()
 
 	return &schema.ToolList{ToolListRequest: req, Count: uint64(len(all)), Body: all}, nil
 }
@@ -69,8 +74,9 @@ func (self *Toolkit) ListNamespaces(ctx context.Context) (_ *schema.NamespaceLis
 	_, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.ListNamespaces")
 	defer func() { endSpan(err) }()
 
-	self.mu.RLock()
-	defer self.mu.RUnlock()
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	self.current()
 	tools := make(map[string]uint64, len(self.namespaces))
 	for _, entry := range self.tools {
 		tools[entry.namespace]++

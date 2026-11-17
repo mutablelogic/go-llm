@@ -3,7 +3,6 @@ package namespace_test
 import (
 	"context"
 	"encoding/json"
-	"sync"
 	"testing"
 	"time"
 
@@ -127,25 +126,19 @@ func Test_Connection(t *testing.T) {
 	assert.Empty(t, ns.Tools())
 	assert.Empty(t, ns.SystemPrompt())
 	require.NoError(t, ns.Refresh(ctx), "which does nothing")
-	var mu sync.Mutex
-	var events []string
-	ns.Notify(func(action eventschema.EventAction, name string) {
-		mu.Lock()
-		defer mu.Unlock()
-		events = append(events, string(action)+" "+name)
-	})
-
 	c := connect(t, server)
 	require.NoError(t, ns.Connect(ctx, c, "", func(name string) bool { return name != "fail" }, 1))
 	assert.Len(t, ns.Tools(), 2)
 	assert.Equal(t, "https://mcp.example.com", ns.Description(), "as the server said no title")
 	assert.True(t, ns.ConnectedTo(c))
+
+	// A watch is sent its tools, and then that they're deleted
+	w := watch(t, ns)
+	assert.ElementsMatch(t, []string{"create echo", "create sum"}, w.next(t, 2))
 	ns.Disconnect(c)
 	assert.Empty(t, ns.Tools())
 	assert.False(t, ns.ConnectedTo(c))
-	mu.Lock()
-	assert.Equal(t, []string{"create echo", "create sum", "delete echo", "delete sum"}, events)
-	mu.Unlock()
+	assert.ElementsMatch(t, []string{"delete echo", "delete sum"}, w.next(t, 2))
 
 	// But not with a client which isn't connected, when it has none, nor
 	// without a name, or a client
@@ -193,13 +186,8 @@ func Test_Refresh(t *testing.T) {
 	server := newServer(t)
 	changed := make(chan struct{}, 8)
 	ns := connected(t, connect(t, server, client.WithToolsChanged(func() { changed <- struct{}{} })), nil)
-	var mu sync.Mutex
-	var events []string
-	ns.Notify(func(action eventschema.EventAction, name string) {
-		mu.Lock()
-		defer mu.Unlock()
-		events = append(events, string(action)+" "+name)
-	})
+	w := watch(t, ns)
+	w.next(t, len(ns.Tools()))
 
 	// A tool is added, one changed, and one removed, on the server
 	server.MCP.AddTool(&sdkmcp.Tool{Name: "new", Description: "New", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
@@ -215,8 +203,60 @@ func Test_Refresh(t *testing.T) {
 		t.Fatal("the server didn't say its tools changed")
 	}
 	require.NoError(t, ns.Refresh(ctx))
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, []string{"update echo", "create new", "delete fail"}, events)
+	assert.Equal(t, []string{"update echo", "create new", "delete fail"}, w.next(t, 3))
 	assert.Len(t, ns.Tools(), 3)
+}
+
+// watcher is a watch of a namespace's tools, as "<action> <name>"
+type watcher struct {
+	ch chan eventschema.Event
+}
+
+// watch watches the namespace, until the test ends
+func watch(t *testing.T, ns *namespace.Namespace) *watcher {
+	t.Helper()
+	w := &watcher{ch: make(chan eventschema.Event, 16)}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- ns.Watch(ctx, w.ch) }()
+	t.Cleanup(func() {
+		cancel()
+		assert.NoError(t, <-done)
+	})
+	return w
+}
+
+// next returns the next n changes, or fails, when they aren't sent in time
+func (w *watcher) next(t *testing.T, n int) []string {
+	t.Helper()
+	var result []string
+	for len(result) < n {
+		select {
+		case event := <-w.ch:
+			result = append(result, string(event.Action)+" "+event.Row)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("got %d of %d changes: %v", len(result), n, result)
+		}
+	}
+	return result
+}
+
+func Test_Reconnect(t *testing.T) {
+	// Connecting with another client, whose server has the same tools,
+	// updates them, so they're called with the new client, once the old one
+	// is disconnected
+	ctx := t.Context()
+	server := newServer(t)
+	first, err := client.New(server.URL)
+	require.NoError(t, err)
+	require.NoError(t, first.Connect(ctx))
+	ns := connected(t, first, func(name string) bool { return name == "echo" })
+	w := watch(t, ns)
+	w.next(t, 1)
+	second := connect(t, server)
+	require.NoError(t, ns.Connect(ctx, second, "Test server", func(name string) bool { return name == "echo" }, 2))
+	assert.Equal(t, []string{"update echo"}, w.next(t, 1))
+	require.NoError(t, first.Disconnect())
+	_, err = ns.Tools()[0].Run(ctx, json.RawMessage(`{"text":"hi"}`))
+	assert.NoError(t, err)
 }

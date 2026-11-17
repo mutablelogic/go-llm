@@ -1,7 +1,9 @@
 package memory
 
 import (
+	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,15 +53,20 @@ func (m *Memory) SystemPromptFor(tools []string) string {
 	return systemPrompt(m.Details(), tools == nil || hasTool(tools, "set_detail"), tools == nil || hasTool(tools, "memories"))
 }
 
-// Notify does nothing, as the memory's tools don't change
 // Type returns that the namespace's tools are built in
 func (*Memory) Type() string { return toolschema.NamespaceBuiltin }
 
-func (*Memory) Notify(func(eventschema.EventAction, string)) {}
+// Watch sends the namespace's tools, which don't change
+func (ns *Memory) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return toolkit.WatchTools(ctx, ch, ns.Tools())
+}
 
 // Tools returns the memory's tools
 func (m *Memory) Tools() []llm.Tool {
-	return []llm.Tool{&setDetail{memory: m}, &memories{memory: m}}
+	m.toolsOnce.Do(func() {
+		m.tools = []llm.Tool{&setDetail{memory: m}, &memories{memory: m}}
+	})
+	return slices.Clone(m.tools)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -91,15 +92,20 @@ func (h *Heartbeats) SystemPrompt() string {
 	return fmt.Sprintf(heartbeatPrompt, zone)
 }
 
-// Notify does nothing, as the tools don't change
 // Type returns that the namespace's tools are built in
 func (*Heartbeats) Type() string { return toolschema.NamespaceBuiltin }
 
-func (*Heartbeats) Notify(func(eventschema.EventAction, string)) {}
+// Watch sends the namespace's tools, which don't change
+func (ns *Heartbeats) Watch(ctx context.Context, ch chan<- eventschema.Event) error {
+	return toolkit.WatchTools(ctx, ch, ns.Tools())
+}
 
 // Tools returns the heartbeats' tool
 func (h *Heartbeats) Tools() []llm.Tool {
-	return []llm.Tool{&tool{heartbeats: h}}
+	h.toolsOnce.Do(func() {
+		h.tools = []llm.Tool{&tool{heartbeats: h}}
+	})
+	return slices.Clone(h.tools)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
