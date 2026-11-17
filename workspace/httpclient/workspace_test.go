@@ -1,6 +1,7 @@
 package httpclient_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	test "github.com/mutablelogic/go-llm/registry/test"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	httpclient "github.com/mutablelogic/go-llm/workspace/httpclient"
@@ -36,8 +38,11 @@ func (n notes) List(_ context.Context, req schema.ListRequest) (*schema.ListResp
 	}, Next: "more"}, nil
 }
 
-func (notes) Read(context.Context, string) (llm.Resource, error) {
-	return nil, llm.ErrNotFound
+func (notes) Read(_ context.Context, uri string) (llm.Resource, error) {
+	if uri != "file:///a.md" {
+		return nil, llm.ErrNotFound.With(uri)
+	}
+	return &providerschema.Resource{ResourceMeta: providerschema.ResourceMeta{ContentType: "text/markdown", Data: []byte("# A")}}, nil
 }
 
 func Test_Client(t *testing.T) {
@@ -63,6 +68,22 @@ func Test_Client(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, &schema.Workspace{Name: "notes", Read: true}, ws)
 		_, err = c.GetWorkspace(ctx, "missing")
+		assert.Equal(t, http.StatusNotFound, status(t, err))
+	})
+
+	t.Run("ReadResource", func(t *testing.T) {
+		var buf bytes.Buffer
+		contentType, err := c.ReadResource(ctx, "notes", schema.ReadRequest{URI: "resource://notes/file:///a.md"}, &buf)
+		require.NoError(t, err)
+		assert.Equal(t, "text/markdown", contentType)
+		assert.Equal(t, "# A", buf.String())
+
+		buf.Reset()
+		_, err = c.ReadResource(ctx, "notes", schema.ReadRequest{URI: "resource://notes/file:///a.md", Format: "markdown"}, &buf)
+		require.NoError(t, err)
+		assert.Contains(t, buf.String(), "---\n")
+
+		_, err = c.ReadResource(ctx, "notes", schema.ReadRequest{URI: "file:///missing.md"}, &buf)
 		assert.Equal(t, http.StatusNotFound, status(t, err))
 	})
 

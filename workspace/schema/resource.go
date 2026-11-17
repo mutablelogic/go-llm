@@ -169,3 +169,36 @@ func (r ListRequest) Query() url.Values {
 	}
 	return q
 }
+
+// ReadRequest is how a workspace's resource is read: by its URI, which is
+// the workspace's, resource://<workspace>/<uri>, or its own, as it is, or
+// as a Markdown document, a part at a time, and whether it's downloaded
+type ReadRequest struct {
+	URI      string `json:"uri" help:"URI of the resource, as it's listed, resource://<workspace>/<uri>, or its own"`
+	Format   string `json:"format,omitempty" enum:"raw,markdown" help:"raw, for the resource as it is, which is the default, or markdown, for its text, as a Markdown document, a part at a time" optional:""`
+	Offset   uint64 `json:"offset,omitempty" help:"With markdown, the byte of its Markdown the part starts at, which is a part's next" optional:""`
+	Limit    uint64 `json:"limit,omitempty" help:"With markdown, the most bytes of its Markdown which are read" optional:""`
+	Download bool   `json:"download,omitempty" help:"Whether the content is downloaded, as an attachment, which the browser saves, rather than shown in it" optional:""`
+}
+
+// Query returns the request as the query of a URL, without its fields which
+// aren't set
+func (r ReadRequest) Query() url.Values {
+	q := url.Values{}
+	if r.URI != "" {
+		q.Set("uri", r.URI)
+	}
+	if r.Format != "" {
+		q.Set("format", r.Format)
+	}
+	if r.Offset > 0 {
+		q.Set("offset", strconv.FormatUint(r.Offset, 10))
+	}
+	if r.Limit > 0 {
+		q.Set("limit", strconv.FormatUint(r.Limit, 10))
+	}
+	if r.Download {
+		q.Set("download", "true")
+	}
+	return q
+}
