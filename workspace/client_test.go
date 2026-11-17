@@ -29,9 +29,8 @@ func Test_Client(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
 
 	assert.False(t, c.HasExperimental(schema.Capability), "it isn't a workspace")
-	ws, err := workspace.NewClient("notes", c)
+	ws, err := workspace.NewClient(c)
 	require.NoError(t, err)
-	assert.Equal(t, "notes", ws.Name())
 	list, err := ws.List(ctx, schema.ListRequest{Path: "other"})
 	require.NoError(t, err)
 	require.Len(t, list.Body, 1)
@@ -46,6 +45,6 @@ func Test_Client(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "# A", string(data))
 
-	_, err = workspace.NewClient("not a name", c)
+	_, err = workspace.NewClient(nil)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }

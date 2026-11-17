@@ -23,10 +23,6 @@ import (
 // memory, whose folders are those of the paths
 type files map[string]string
 
-func (files) Name() string        { return "files" }
-func (files) Title() string       { return "Files" }
-func (files) Description() string { return "Files in memory" }
-
 // List lists the folders and files in, or under, the path, a page at a
 // time, whose cursor is the index of the next
 func (f files) List(_ context.Context, req schema.ListRequest) (*schema.ListResponse, error) {
@@ -99,7 +95,7 @@ func Test_Workspace(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
 	assert.True(t, c.HasResources())
 	assert.True(t, c.HasExperimental(schema.Capability), "it's a workspace")
-	ws, err := workspace.NewClient("files", c)
+	ws, err := workspace.NewClient(c)
 	require.NoError(t, err)
 
 	uris := func(list *schema.ListResponse) []string {

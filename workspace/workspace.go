@@ -14,18 +14,10 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // INTERFACES
 
-// Workspace is a set of resources, such as a folder, or a vault of notes
+// Workspace is a set of resources, such as a folder, or a vault of notes.
+// Its name, title and description are its namespace's, or MCP server's,
+// and it's added to a registry by its name.
 type Workspace interface {
-	// Name returns the workspace's name, which is an identifier, and is
-	// unique in a registry
-	Name() string
-
-	// Title returns the workspace's title, for people, or nothing
-	Title() string
-
-	// Description returns what the workspace has, or nothing
-	Description() string
-
 	// List returns the workspace's folders and resources, in a folder, or
 	// under it, a page at a time, in an order which is the same each time,
 	// so its pages don't overlap. A folder is a resource whose type is

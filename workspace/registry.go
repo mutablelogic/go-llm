@@ -33,15 +33,14 @@ func New() *Registry {
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
-// Add adds the workspace. Returns ErrBadParameter when there's no workspace,
-// or its name isn't an identifier, and ErrConflict when the registry has a
-// workspace with its name.
-func (r *Registry) Add(ws Workspace) error {
+// Add adds the workspace, with the name, such as its namespace's. Returns
+// ErrBadParameter when there's no workspace, or the name isn't an
+// identifier, and ErrConflict when the registry has a workspace with the
+// name.
+func (r *Registry) Add(name string, ws Workspace) error {
 	if ws == nil {
 		return llm.ErrBadParameter.With("missing workspace")
-	}
-	name := ws.Name()
-	if !types.IsIdentifier(name) {
+	} else if !types.IsIdentifier(name) {
 		return llm.ErrBadParameter.Withf("workspace name %q isn't an identifier", name)
 	}
 	r.mu.Lock()
@@ -94,18 +93,20 @@ func (r *Registry) Read(ctx context.Context, name, uri string) (resource llm.Res
 	return resource, err
 }
 
-// All returns the workspaces, in order of their names, as they were when
-// it's ranged over, which can add, or remove, workspaces, as it ranges
-func (r *Registry) All() iter.Seq[Workspace] {
-	return func(yield func(Workspace) bool) {
+// All returns the workspaces, by their names, in order of their names, as
+// they were when it's ranged over, which can add, or remove, workspaces,
+// as it ranges
+func (r *Registry) All() iter.Seq2[string, Workspace] {
+	return func(yield func(string, Workspace) bool) {
 		r.mu.RLock()
-		workspaces := make([]Workspace, 0, len(r.workspaces))
-		for _, name := range slices.Sorted(maps.Keys(r.workspaces)) {
+		names := slices.Sorted(maps.Keys(r.workspaces))
+		workspaces := make([]Workspace, 0, len(names))
+		for _, name := range names {
 			workspaces = append(workspaces, r.workspaces[name])
 		}
 		r.mu.RUnlock()
-		for _, ws := range workspaces {
-			if !yield(ws) {
+		for i, ws := range workspaces {
+			if !yield(names[i], ws) {
 				return
 			}
 		}

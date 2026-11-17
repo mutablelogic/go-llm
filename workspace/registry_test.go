@@ -14,12 +14,9 @@ import (
 )
 
 // empty is a workspace with no resources
-type empty struct{ name string }
+type empty struct{}
 
-func (w empty) Name() string        { return w.name }
-func (w empty) Title() string       { return "Empty" }
-func (w empty) Description() string { return "A workspace with no resources" }
-func (w empty) List(context.Context, schema.ListRequest) (*schema.ListResponse, error) {
+func (empty) List(context.Context, schema.ListRequest) (*schema.ListResponse, error) {
 	return &schema.ListResponse{}, nil
 }
 
@@ -27,21 +24,21 @@ func Test_Registry(t *testing.T) {
 	r := workspace.New()
 
 	// Workspaces are added, by their names, which are unique identifiers
-	require.NoError(t, r.Add(empty{"notes"}))
-	require.NoError(t, r.Add(empty{"files"}))
-	assert.ErrorIs(t, r.Add(empty{"notes"}), llm.ErrConflict)
-	assert.ErrorIs(t, r.Add(empty{"not a name"}), llm.ErrBadParameter)
-	assert.ErrorIs(t, r.Add(nil), llm.ErrBadParameter)
+	require.NoError(t, r.Add("notes", empty{}))
+	require.NoError(t, r.Add("files", empty{}))
+	assert.ErrorIs(t, r.Add("notes", empty{}), llm.ErrConflict)
+	assert.ErrorIs(t, r.Add("not a name", empty{}), llm.ErrBadParameter)
+	assert.ErrorIs(t, r.Add("nil", nil), llm.ErrBadParameter)
 
 	// They're got, and listed, in order of their names
 	require.NoError(t, r.With("notes", func(ws workspace.Workspace) error {
-		assert.Equal(t, "notes", ws.Name())
+		assert.Equal(t, empty{}, ws)
 		return nil
 	}))
 	assert.ErrorIs(t, r.With("notes", func(workspace.Workspace) error { return llm.ErrConflict }), llm.ErrConflict, "its error")
 	var names []string
-	for ws := range r.All() {
-		names = append(names, ws.Name())
+	for name := range r.All() {
+		names = append(names, name)
 	}
 	assert.Equal(t, []string{"files", "notes"}, names)
 
@@ -68,8 +65,8 @@ func Test_Read(t *testing.T) {
 	// isn't
 	ctx := context.Background()
 	r := workspace.New()
-	require.NoError(t, r.Add(empty{"empty"}))
-	require.NoError(t, r.Add(readable{empty{"notes"}}))
+	require.NoError(t, r.Add("empty", empty{}))
+	require.NoError(t, r.Add("notes", readable{}))
 	resource, err := r.Read(ctx, "notes", "file:///note.md")
 	require.NoError(t, err)
 	data, err := llm.ReadAll(ctx, resource)
