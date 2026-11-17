@@ -88,8 +88,18 @@ func (c *Client) Connect(ctx context.Context) error {
 // waiting for it are given
 func (c *Client) connect(ctx context.Context, a *attempt) (*sdkmcp.Implementation, error) {
 	c.challenge.Store(nil)
+	var transports []sdkmcp.Transport
+	if c.transport != nil {
+		transport, err := c.transport(ctx)
+		if err != nil {
+			return nil, c.failed(a, llm.ErrServiceUnavailable.Withf("%s can't be connected to: %w", c.endpoint, err), true)
+		}
+		transports = []sdkmcp.Transport{transport}
+	} else {
+		transports = c.transports()
+	}
 	var errs []error
-	for _, transport := range c.transports() {
+	for _, transport := range transports {
 		session, cancel, err := c.dial(ctx, transport)
 		if err == nil {
 			return c.keep(a, session, cancel)

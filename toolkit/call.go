@@ -10,6 +10,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	providerschema "github.com/mutablelogic/go-llm/provider/schema"
 	schema "github.com/mutablelogic/go-llm/toolkit/schema"
+	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	attribute "go.opentelemetry.io/otel/attribute"
 )
 
@@ -53,21 +54,10 @@ func (self *Toolkit) CallTool(ctx context.Context, name string, input json.RawMe
 func (e entry) call(ctx context.Context, input json.RawMessage) (json.RawMessage, error) {
 	name := schema.CanonicalToolName(e.namespace, e.tool.Name())
 
-	// The input, if any, must be valid JSON
-	if len(input) > 0 && !json.Valid(input) {
-		return nil, llm.ErrBadParameter.Withf("tool %q: input isn't valid JSON", name)
-	}
-
-	// The input must match the tool's input schema, if it has one, as it is,
-	// or without its fields which are null
-	if e.input != nil {
-		if err := e.validate(input); err != nil {
-			stripped := withoutNulls(input)
-			if bytes.Equal(stripped, input) || e.validate(stripped) != nil {
-				return nil, llm.ErrBadParameter.Withf("tool %q: %v", name, err)
-			}
-			input = stripped
-		}
+	// The input must be valid, as checkInput says
+	input, err := checkInput(name, e.input, input)
+	if err != nil {
+		return nil, err
 	}
 
 	// Run the tool, and return its result as JSON
@@ -78,13 +68,48 @@ func (e entry) call(ctx context.Context, input json.RawMessage) (json.RawMessage
 	return toolResult(ctx, name, result)
 }
 
-// validate returns an error when the input doesn't match the tool's input
-// schema. Empty input is validated as an empty object.
-func (e entry) validate(input json.RawMessage) error {
+// CheckInput returns the tool's input, which is valid JSON, and matches its
+// input schema, when it has one, as it is, or without its fields which are
+// null, as a toolkit runs a tool with, so what else runs a tool, such as an
+// MCP server, checks its input as a toolkit does. Returns ErrBadParameter
+// when it isn't valid, or the schema isn't.
+func CheckInput(tool llm.Tool, input json.RawMessage) (json.RawMessage, error) {
+	if tool == nil {
+		return nil, llm.ErrBadParameter.With("missing tool")
+	}
+	inputSchema, err := resolveSchema(tool.InputSchema())
+	if err != nil {
+		return nil, llm.ErrBadParameter.Withf("tool %q: invalid input schema: %v", tool.Name(), err)
+	}
+	return checkInput(tool.Name(), inputSchema, input)
+}
+
+// checkInput returns the input, which, if any, must be valid JSON, and
+// match the input schema, when there is one, as it is, or without its
+// fields which are null. Returns ErrBadParameter when it doesn't.
+func checkInput(name string, inputSchema *jsonschema.Schema, input json.RawMessage) (json.RawMessage, error) {
+	if len(input) > 0 && !json.Valid(input) {
+		return nil, llm.ErrBadParameter.Withf("tool %q: input isn't valid JSON", name)
+	} else if inputSchema == nil {
+		return input, nil
+	}
+	if err := validate(inputSchema, input); err != nil {
+		stripped := withoutNulls(input)
+		if bytes.Equal(stripped, input) || validate(inputSchema, stripped) != nil {
+			return nil, llm.ErrBadParameter.Withf("tool %q: %v", name, err)
+		}
+		input = stripped
+	}
+	return input, nil
+}
+
+// validate returns an error when the input doesn't match the input schema.
+// Empty input is validated as an empty object.
+func validate(inputSchema *jsonschema.Schema, input json.RawMessage) error {
 	if len(input) == 0 {
 		input = json.RawMessage(`{}`)
 	}
-	return e.input.Validate(input)
+	return inputSchema.Validate(input)
 }
 
 // withoutNulls returns the input without the fields of an object which are
