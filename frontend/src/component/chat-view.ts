@@ -24,6 +24,10 @@ import Video16 from '@carbon/icons/es/video/16.js';
 import PlayFilledAlt16 from '@carbon/icons/es/play--filled--alt/16.js';
 import { MediaPlayer, playable, type Media } from './media-player';
 import { resourceName, type Resource, resourceHash } from '../schema/resource';
+
+// eventWorkspaceOpen is fired, with a workspace's resource's URI, by a link
+// to it, to show it in its panel, as the Workspaces module's eventOpen
+const eventWorkspaceOpen = 'llm-workspace-open';
 import { annotationOf, canonicalTool, isUser, type ContentBlock, type Marker, type Message, type Session } from '../schema/session';
 import { detailValue, type Details } from '../schema/memory';
 import { markdown, markdownStyles } from './markdown';
@@ -638,12 +642,13 @@ export class ChatView extends LitElement {
     }
 
     // renderAttachment returns an attachment: its icon, and its name, which
-    // links to its content, when it's known
+    // links to its content, when it's known, or, for a workspace's, shows it
+    // in its panel
     private renderAttachment(attachment: Attachment) {
         const url = attachment.url ? this.contentURL(attachment.url) : undefined;
         const name = url
             ? html`<a href=${url} target="_blank" rel="noopener noreferrer"
-                @click=${(e: Event) => this.playLink(e, { url, name: attachment.name, type: attachment.type })}>${attachment.name}</a>`
+                @click=${(e: Event) => this.openWorkspaceLink(e, url) || this.playLink(e, { url, name: attachment.name, type: attachment.type })}>${attachment.name}</a>`
             : html`<span>${attachment.name}</span>`;
         return html`<span class="attachment">${iconLoader(attachmentIcon(attachment.type))}${name}</span>`;
     }
@@ -681,10 +686,27 @@ export class ChatView extends LitElement {
         }
     }
 
+    // openWorkspaceLink shows a workspace's resource, which the link is to the
+    // content of, in its panel, rather than following the link, and returns
+    // true, or false, when it isn't a workspace's
+    private openWorkspaceLink(event: Event, href: string): boolean {
+        const match = href.match(/\/llm\/workspace\/[^/?]+\/content\?(.*)$/);
+        const uri = match ? new URLSearchParams(match[1]).get('uri') : null;
+        if (!uri) {
+            return false;
+        }
+        event.preventDefault();
+        this.dispatchEvent(new CustomEvent(eventWorkspaceOpen, { detail: uri, bubbles: true, composed: true }));
+        return true;
+    }
+
     // handleLink plays a link in a reply to a resource which is audio, or
     // video, in the player, rather than in a new tab
     private readonly handleLink = (event: Event) => {
         const link = (event.target as Element | null)?.closest?.('a');
+        if (link && this.openWorkspaceLink(event, link.getAttribute('href') ?? '')) {
+            return;
+        }
         const match = link?.getAttribute('href')?.match(/\/resource\/([0-9a-f]{64})\/content/);
         if (!link || !match) {
             return;

@@ -49,7 +49,7 @@ import type { App } from './module/app';
 import { chatModule } from './module/chat';
 import { modelsModule } from './module/models';
 import { toolsModule } from './module/tools';
-import { workspacesModule } from './module/workspaces';
+import { eventOpen, workspacesModule } from './module/workspaces';
 
 // Errors, and other notifications, are shown as toasts
 const notifications = new NotificationController();
@@ -97,7 +97,11 @@ const app: App = { nav, router, root: document.querySelector('main')!, notificat
 const { chat } = chatModule(app);
 const models = modelsModule(app);
 const tools = toolsModule(app);
-workspacesModule(app);
+const workspaces = workspacesModule(app);
+
+// A link to a workspace's resource, such as in a chat, shows it in its
+// folder, in its panel
+document.addEventListener(eventOpen, (e) => workspaces.openResource((e as CustomEvent<string>).detail));
 
 // The panel which starts a new chat chooses its tools from them, as they are
 tools.onChange((all, namespaces) => {
