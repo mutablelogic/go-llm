@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -170,7 +171,7 @@ func openWorkspaceFile(ctx context.Context, workspaces *workspace.Registry, endp
 		file.Size = size
 	}
 	if endpoint != "" {
-		file.URL = endpoint + "/llm/workspace/" + url.PathEscape(name) + "/content?" + url.Values{"uri": {uri}}.Encode()
+		file.URL = workspaceContentURL(endpoint, name, uri)
 		return file, nil, nil
 	}
 	read, err := resource.Read(ctx)
@@ -270,6 +271,33 @@ func list(things []string) string {
 		return things[0]
 	}
 	return strings.Join(things[:len(things)-1], ", ") + " and " + things[len(things)-1]
+}
+
+// workspaceLink matches a Markdown link to a workspace's resource, such as
+// [Blade Runner](resource://files/Movies/Blade%20Runner.mp4)
+var workspaceLink = regexp.MustCompile(`\]\((resource://[^/)\s]+/[^)\s]+)\)`)
+
+// linkWorkspaceFiles returns the text, whose links to a workspace's
+// resources are to their content, on the server's public endpoint, so a
+// chat opens them, or as it is, when there's no endpoint
+func linkWorkspaceFiles(text, endpoint string) string {
+	if endpoint == "" {
+		return text
+	}
+	return workspaceLink.ReplaceAllStringFunc(text, func(link string) string {
+		uri := workspaceLink.FindStringSubmatch(link)[1]
+		name, _, ok := workspaceschema.ParseURI(uri)
+		if !ok {
+			return link
+		}
+		return "](" + workspaceContentURL(endpoint, name, uri) + ")"
+	})
+}
+
+// workspaceContentURL returns the URL of the content of the workspace's
+// resource, with the URI, on the endpoint
+func workspaceContentURL(endpoint, name, uri string) string {
+	return endpoint + "/llm/workspace/" + url.PathEscape(name) + "/content?" + url.Values{"uri": {uri}}.Encode()
 }
 
 // replyFiles returns the URIs of the files a reply made which are sent with

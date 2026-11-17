@@ -291,3 +291,11 @@ func Test_OpenWorkspaceFile(t *testing.T) {
 	_, _, err = openFile(nil, workspaces, "https://example.com/api")(ctx, uuid.New(), "resource://files/file:///other.mkv")
 	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
+
+func Test_LinkWorkspaceFiles(t *testing.T) {
+	// A reply's links to a workspace's files are https links, on the
+	// server's endpoint, and others, and without one, are as they are
+	text := "Here: [Blade Runner](resource://files/Movies/Blade%20Runner.mp4), and [speech](resource:///abc)."
+	assert.Equal(t, "Here: [Blade Runner](https://example.com/api/llm/workspace/files/content?uri=resource%3A%2F%2Ffiles%2FMovies%2FBlade%2520Runner.mp4), and [speech](resource:///abc).", linkWorkspaceFiles(text, "https://example.com/api"))
+	assert.Equal(t, text, linkWorkspaceFiles(text, ""))
+}

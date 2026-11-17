@@ -340,11 +340,11 @@ func Test_Telegram_SendFile(t *testing.T) {
 		return io.NopCloser(strings.NewReader("")), nil
 	}, "A big photo")
 	require.NoError(t, err)
-	assert.Equal(t, []messaging.Sent{{ID: "7", Text: true}, {ID: "8", File: "photo.png", Note: "too large to send, so this is a note in its place"}}, sent)
+	assert.Equal(t, []messaging.Sent{{ID: "7", Text: true}, {ID: "8", File: "photo.png", Note: "too large to send: it's 60.0 MB, more than the 50.0 MB a Telegram bot can send, so this is a note in its place; link to it in your reply instead"}}, sent)
 	assert.Len(t, b.uploads, 5)
 	assert.Zero(t, opened)
 	assert.Equal(t, "A big photo", b.sent[1].Text)
-	assert.Equal(t, "📎 photo.png is too large to send here (60.0 MB)", b.sent[2].Text)
+	assert.Equal(t, "📎 photo.png is too large to send here (60.0 MB, more than the 50.0 MB a bot can send)", b.sent[2].Text)
 
 	// A caption whose formatting Telegram can't parse is sent as plain
 	// text, with the file, opened again

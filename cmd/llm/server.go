@@ -269,8 +269,11 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 
 		// Messaging, when a provider's credentials are set, such as
 		// Telegram's, whose chats are connected to sessions, as channels,
-		// and whose tools connect them
-		m, err := newServerMessaging(ctx, tools, events, res, func() *time.Location { return mem.Details().Zone() }, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res, workspaces, config.PublicEndpoint(ctx.URL()))), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
+		// and whose tools connect them. A workspace's file is sent to a
+		// chat as a link to it, on the server's public https endpoint, when
+		// it has one.
+		endpoint := config.PublicEndpoint(ctx.URL())
+		m, err := newServerMessaging(ctx, tools, events, res, func() *time.Location { return mem.Details().Zone() }, messaging.WithBroadcaster(b), messaging.WithFiles(openFile(res, workspaces, endpoint)), messaging.WithSessions(func(ctx context.Context, id uuid.UUID) error {
 			_, err := sessions.Get(ctx, id)
 			return err
 		}))
@@ -292,7 +295,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			}
 			replyCtx, cancel := context.WithTimeout(replyCtx, 2*time.Minute)
 			defer cancel()
-			out := messaging.Outgoing{Text: reply.Text, Files: replyFiles(reply)}
+			out := messaging.Outgoing{Text: linkWorkspaceFiles(reply.Text, endpoint), Files: replyFiles(reply)}
 			if err := m.Reply(replyCtx, session, out); err != nil {
 				ctx.Logger().ErrorContext(replyCtx, "reply not sent to channels", "session", session, "error", err.Error())
 			}
