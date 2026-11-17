@@ -196,13 +196,13 @@ func (r *Registry) Resolve(ctx context.Context, uri string) (_ llm.Resource, err
 		return r.Read(ctx, name, original)
 	}
 	for name, ws := range r.All() {
-		reader, ok := ws.(Reader)
-		if !ok {
+		if _, ok := ws.(Reader); !ok {
 			continue
 		}
-		resource, err := reader.Read(ctx, uri)
+		// Each is read as Read does, so it's traced, with its workspace
+		resource, err := r.Read(ctx, name, uri)
 		if err == nil {
-			return withURI(resource, schema.URIOf(name, uri)), nil
+			return resource, nil
 		} else if !errors.Is(err, llm.ErrNotFound) && !errors.Is(err, llm.ErrBadParameter) {
 			return nil, err
 		}
