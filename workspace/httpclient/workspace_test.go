@@ -94,19 +94,25 @@ func Test_Client(t *testing.T) {
 		assert.True(t, list.Body[0].IsFolder())
 		assert.Equal(t, "resource://notes/file:///a.md", list.Body[1].URI)
 		assert.Equal(t, "resource://notes/artwork:///a", list.Body[1].Artwork[0].URI)
-		assert.Equal(t, "more", list.Next)
+		require.NotEmpty(t, list.Next)
+		assert.NotContains(t, list.Next, "more", "the cursor is opaque")
 
 		// With the folder, recursion, cursor and limit, as the workspace is
-		// asked
-		req := schema.ListRequest{Path: "2026", Recursive: true, Cursor: "more", Limit: 10}
+		// asked, with its own cursor
+		req := schema.ListRequest{Path: "2026", Recursive: true, Cursor: list.Next, Limit: 10}
 		list, err = c.ListResources(ctx, "notes", req)
 		require.NoError(t, err)
 		require.Len(t, list.Body, 1)
 		assert.Equal(t, "resource://notes/file:///2026/b.md", list.Body[0].URI)
+		req.Cursor = "more"
 		assert.Equal(t, req, asked)
 
-		// With spaces, as they are
-		req = schema.ListRequest{Path: " my notes ", Cursor: " opaque= "}
+		// A cursor which isn't one is said to be
+		_, err = c.ListResources(ctx, "notes", schema.ListRequest{Cursor: "notes/2026"})
+		assert.Error(t, err)
+
+		// A folder with spaces, as it is
+		req = schema.ListRequest{Path: " my notes "}
 		_, err = c.ListResources(ctx, "notes", req)
 		require.NoError(t, err)
 		assert.Equal(t, req, asked, "as they are, with their spaces")

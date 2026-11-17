@@ -2,12 +2,14 @@ package workspace
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"iter"
 	"maps"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -414,26 +416,64 @@ func (r *Registry) ListResources(ctx context.Context, name string, req schema.Li
 	)
 	defer func() { endSpan(err) }()
 
-	var root string
-	err = r.With(name, func(ws Workspace) error {
-		result, err = ws.List(ctx, req)
-		root = rootOf(ws)
-		return err
-	})
+	// The cursor is the registry's, of the workspace's page, and how many
+	// of it were returned already
+	page, err := cursorOf(name, req.Cursor)
 	if err != nil {
 		return nil, err
 	}
 
-	// Only those of the type, as a workspace can list them all, as an MCP
-	// server which isn't a workspace's does
-	if req.Type != "" {
-		result.Body = slices.DeleteFunc(result.Body, func(r schema.ResourceMeta) bool { return r.Type != req.Type })
+	// The pages of the workspace, from the cursor's, until there are as
+	// many as the limit, of the type, as a workspace can return more, or
+	// all of its types, as an MCP server which isn't a workspace's does
+	result = &schema.ListResponse{Body: []schema.ResourceMeta{}}
+	var root string
+	for pages := 0; ; pages++ {
+		var list *schema.ListResponse
+		pageReq := req
+		pageReq.Cursor = page.Cursor
+		if err := r.With(name, func(ws Workspace) error {
+			var err error
+			list, err = ws.List(ctx, pageReq)
+			root = rootOf(ws)
+			return err
+		}); err != nil {
+			return nil, err
+		}
+		i := page.Skip
+		for ; i < len(list.Body); i++ {
+			if req.Limit > 0 && uint(len(result.Body)) == req.Limit {
+				break
+			}
+			if req.Type == "" || list.Body[i].Type == req.Type {
+				result.Body = append(result.Body, list.Body[i])
+			}
+		}
+		switch {
+		case i < len(list.Body):
+			// The rest of this page is next
+			page = listCursor{Workspace: name, Cursor: page.Cursor, Skip: i}
+		case list.Next != "":
+			page = listCursor{Workspace: name, Cursor: list.Next}
+		default:
+			page = listCursor{}
+		}
+		if page.Workspace == "" || req.Limit == 0 || uint(len(result.Body)) == req.Limit || pages >= maxListPages {
+			break
+		}
+	}
+	if page.Workspace != "" {
+		result.Next = page.String()
 	}
 
-	// Their URIs, and their artwork's, are the workspace's
+	// Their URIs, and their artwork's, are the workspace's, and each has a
+	// path, which is its URI's, after the workspace
 	for i := range result.Body {
 		resource := &result.Body[i]
 		resource.URI = schema.URIOf(name, root, resource.URI)
+		if resource.Path == "" {
+			_, resource.Path, _ = schema.ParseURI(resource.URI)
+		}
 		for j := range resource.Artwork {
 			resource.Artwork[j].URI = schema.URIOf(name, root, resource.Artwork[j].URI)
 		}
@@ -455,6 +495,52 @@ func (r *Registry) workspaceOf(name string, ws Workspace) schema.Workspace {
 		result.Title, result.Description, result.Version = d.Title(), d.Description(), d.Version()
 	}
 	return result
+}
+
+// maxListPages is the most pages of a workspace which are listed at once,
+// to fill a page of the limit, of the type
+const maxListPages = 10
+
+// listCursor is the registry's cursor of a workspace's list: its name, its
+// cursor of the page, and how many of the page were returned already
+type listCursor struct {
+	Workspace string `json:"w"`
+	Cursor    string `json:"c,omitempty"`
+	Skip      int    `json:"s,omitempty"`
+}
+
+// listCursorPrefix is the prefix of a cursor, which is opaque
+const listCursorPrefix = "c1."
+
+// String returns the cursor, which is opaque
+func (c listCursor) String() string {
+	data, _ := json.Marshal(c)
+	return listCursorPrefix + base64.RawURLEncoding.EncodeToString(data)
+}
+
+// cursorOf returns the cursor of the workspace with the name, or the start,
+// when it's empty. Returns ErrBadParameter when it isn't a cursor the
+// registry returned, or it's another workspace's.
+func cursorOf(name, cursor string) (listCursor, error) {
+	if cursor == "" {
+		return listCursor{Workspace: name}, nil
+	}
+	bad := llm.ErrBadParameter.Withf("cursor %q isn't valid: pass a response's next, as it is", cursor)
+	encoded, ok := strings.CutPrefix(cursor, listCursorPrefix)
+	if !ok {
+		return listCursor{}, bad
+	}
+	data, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return listCursor{}, bad
+	}
+	var result listCursor
+	if err := json.Unmarshal(data, &result); err != nil || result.Skip < 0 {
+		return listCursor{}, bad
+	} else if result.Workspace != name {
+		return listCursor{}, llm.ErrBadParameter.Withf("cursor is workspace %q's, not %q's", result.Workspace, name)
+	}
+	return result, nil
 }
 
 // rootOf returns the root of the workspace's resources' URIs, or nothing,

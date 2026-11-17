@@ -104,11 +104,18 @@ func TestWorkspaces(t *testing.T) {
 		assert.JSONEq(t, `[{"name":"notes","description":"My notes"}]`, string(result))
 		result, err = tk.CallTool(ctx, "workspace:list", json.RawMessage(`{"workspace":"notes"}`))
 		require.NoError(t, err)
-		assert.JSONEq(t, `{"body":[{"uri":"resource://notes/file:///note.md","name":"note.md","type":"text/markdown"}]}`, string(result), "the workspace's URI")
+		assert.JSONEq(t, `{"body":[{"uri":"resource://notes/file:///note.md","path":"file:///note.md","name":"note.md","type":"text/markdown"}]}`, string(result), "the workspace's URI, and its path, after the workspace")
 	})
 
 	t.Run("Read", func(t *testing.T) {
+		// Without a format, a note is its text, as Markdown, and, raw, it's
+		// the resource
 		result, err := tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md"}`))
+		require.NoError(t, err)
+		var text string
+		require.NoError(t, json.Unmarshal(result, &text), string(result))
+		assert.Contains(t, text, "# Note")
+		result, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///note.md","format":"raw"}`))
 		require.NoError(t, err)
 		assert.Contains(t, string(result), "text/markdown")
 		_, err = tk.CallTool(ctx, "workspace:read", json.RawMessage(`{"uri":"file:///missing.md"}`))
