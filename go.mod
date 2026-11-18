@@ -13,7 +13,7 @@ require (
 	github.com/mutablelogic/go-client v1.4.14
 	github.com/mutablelogic/go-filer v0.3.2
 	github.com/mutablelogic/go-metadata v1.1.2
-	github.com/mutablelogic/go-server v1.8.13
+	github.com/mutablelogic/go-server v1.8.16
 	github.com/stretchr/testify v1.12.1
 	github.com/yuin/goldmark v1.8.6
 	go.opentelemetry.io/otel v1.47.0
