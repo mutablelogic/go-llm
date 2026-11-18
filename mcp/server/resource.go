@@ -142,9 +142,10 @@ func (s *Server) listResources(ctx context.Context, req sdkmcp.Request) (sdkmcp.
 	if r, ok := req.(*sdkmcp.ListResourcesRequest); ok {
 		params = r.Params
 	}
-	list, err := s.workspace.List(ctx, schema.ListRequestOf(params))
+	request := schema.ListRequestOf(params)
+	list, err := s.workspace.List(ctx, request)
 	if err != nil {
-		return nil, err
+		return nil, wireError(err, request.Path)
 	}
 	result := &sdkmcp.ListResourcesResult{Resources: make([]*sdkmcp.Resource, 0, len(list.Body)), NextCursor: list.Next}
 	if list.Count != nil {
@@ -211,6 +212,20 @@ func (s *Server) readResource(ctx context.Context, req sdkmcp.Request) (sdkmcp.R
 	}
 	result.Contents = []*sdkmcp.ResourceContents{contents}
 	return result, nil
+}
+
+// wireError returns the workspace's error as JSON-RPC's, so its client
+// knows what it is: MCP's resource not found, of the folder, or resource,
+// for ErrNotFound, and invalid params, with its message, for
+// ErrBadParameter, or the error, as it is
+func wireError(err error, uri string) error {
+	switch {
+	case errors.Is(err, llm.ErrNotFound):
+		return sdkmcp.ResourceNotFoundError(uri)
+	case errors.Is(err, llm.ErrBadParameter):
+		return &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: err.Error()}
+	}
+	return err
 }
 
 // tooLarge returns the error of a read of all of a resource which is larger

@@ -546,3 +546,40 @@ func Test_WorkspaceSubscribe(t *testing.T) {
 		}
 	}
 }
+
+// failing is a workspace whose folders can't be listed: one which isn't
+// there, and a request which isn't valid
+type failing struct{}
+
+func (failing) List(_ context.Context, req schema.ListRequest) (*schema.ListResponse, error) {
+	switch req.Path {
+	case "missing":
+		return nil, llm.ErrNotFound.With("list /missing: no such file or directory")
+	case "bad":
+		return nil, llm.ErrBadParameter.With("cursor isn't of this listing")
+	}
+	return &schema.ListResponse{}, nil
+}
+
+func Test_WorkspaceListErrors(t *testing.T) {
+	// A folder which isn't there is ErrNotFound, by its path, and a request
+	// which isn't valid is ErrBadParameter, with its reason, through the
+	// client, rather than an error which is neither
+	ctx := t.Context()
+	srv, err := server.New(&tools{}, server.WithWorkspace(failing{}))
+	require.NoError(t, err)
+	c, err := client.New("memory://files", client.WithTransport(srv.InMemoryTransport))
+	require.NoError(t, err)
+	require.NoError(t, c.Connect(ctx))
+	t.Cleanup(func() { assert.NoError(t, c.Disconnect()) })
+	ws, err := workspace.NewClient(c)
+	require.NoError(t, err)
+
+	_, err = ws.List(ctx, schema.ListRequest{Path: "missing"})
+	require.ErrorIs(t, err, llm.ErrNotFound)
+	assert.EqualError(t, err, "not found: missing")
+
+	_, err = ws.List(ctx, schema.ListRequest{Path: "bad"})
+	require.ErrorIs(t, err, llm.ErrBadParameter)
+	assert.EqualError(t, err, "bad parameter: cursor isn't of this listing")
+}

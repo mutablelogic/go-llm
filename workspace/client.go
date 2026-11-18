@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/url"
 	"path"
@@ -69,7 +70,7 @@ func NewClient(c *client.Client) (Reader, error) {
 func (w *clientWorkspace) List(ctx context.Context, req schema.ListRequest) (*schema.ListResponse, error) {
 	result, err := w.client.ListResources(ctx, req.MCP())
 	if err != nil {
-		return nil, err
+		return nil, notFound(err, req.Path)
 	}
 	response := &schema.ListResponse{Body: make([]schema.ResourceMeta, 0, len(result.Resources)), Next: result.NextCursor, Count: schema.CountOf(result)}
 	for _, resource := range result.Resources {
@@ -172,11 +173,25 @@ func (w *clientWorkspace) WatchResources(ctx context.Context, ch chan<- schema.C
 // PRIVATE FUNCTIONS
 
 // notFound returns MCP's resource not found error as one which is
-// ErrNotFound, as well as itself, as a Reader's is, or the error, as it is
+// ErrNotFound, as well as itself, as a Reader's is, of the resource, or
+// folder, invalid params as ErrBadParameter, with its message, or the
+// error, as it is
 func notFound(err error, uri string) error {
 	var wire *jsonrpc.Error
-	if errors.As(err, &wire) && wire.Code == sdkmcp.CodeResourceNotFound {
+	if !errors.As(err, &wire) {
+		return err
+	}
+	// Resource not found has the same code as invalid params, since MCP's
+	// SDK v1.7.0, and is told apart by the URI in its data
+	var data struct {
+		URI *string `json:"uri"`
+	}
+	if wire.Code == sdkmcp.CodeResourceNotFound && json.Unmarshal(wire.Data, &data) == nil && data.URI != nil {
 		return &notFoundError{uri: uri, err: err}
+	}
+	switch wire.Code {
+	case sdkmcp.CodeResourceNotFound, jsonrpc.CodeInvalidParams:
+		return &badParameterError{message: wire.Message, err: err}
 	}
 	return err
 }
@@ -190,6 +205,22 @@ type notFoundError struct {
 
 func (e *notFoundError) Error() string   { return llm.ErrNotFound.Error() + ": " + e.uri }
 func (e *notFoundError) Unwrap() []error { return []error{llm.ErrNotFound, e.err} }
+
+// badParameterError is a request the server says is invalid, which says
+// why, as it said, and is ErrBadParameter, and MCP's error, in its chain
+type badParameterError struct {
+	message string
+	err     error
+}
+
+func (e *badParameterError) Error() string {
+	// A go-llm server's message says it already
+	if strings.HasPrefix(e.message, llm.ErrBadParameter.Error()) {
+		return e.message
+	}
+	return llm.ErrBadParameter.With(e.message).Error()
+}
+func (e *badParameterError) Unwrap() []error { return []error{llm.ErrBadParameter, e.err} }
 
 ///////////////////////////////////////////////////////////////////////////////
 // CONTENTS
