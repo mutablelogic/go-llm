@@ -49,7 +49,6 @@ type details struct {
 	Returned       bool      `json:"return_to_sender,omitempty"`
 	From           string    `json:"from,omitempty"`
 	To             string    `json:"to,omitempty"`
-	PickupLocation string    `json:"pickup_location,omitempty"`
 	Service        string    `json:"service,omitempty"`
 	Packages       float64   `json:"packages,omitempty"`
 	LastMile       *lastMile `json:"last_mile,omitempty"`
@@ -62,7 +61,8 @@ type lastMile struct {
 	TrackingNumber string `json:"tracking_number,omitempty"`
 }
 
-// checkpoint is something which happened to a shipment, where, and when
+// checkpoint is something which happened to a shipment, where, which is no
+// nearer than a city, as a courier's own text can be an address, and when
 type checkpoint struct {
 	Time     string `json:"time,omitempty"`
 	Status   string `json:"status,omitempty"`
@@ -134,7 +134,6 @@ func newTrackingDetails(t httpclient.Tracking) tracking {
 		Returned:       t.ReturnToSender,
 		From:           join(t.OriginCity, t.OriginState, t.OriginCountryRegion),
 		To:             join(t.DestinationCity, t.DestinationState, t.DestinationCountryRegion),
-		PickupLocation: t.PickupLocation,
 		Service:        t.Type,
 		Packages:       t.PackageCount,
 		Link:           t.CourierTrackingLink,
@@ -147,15 +146,7 @@ func newTrackingDetails(t httpclient.Tracking) tracking {
 		result.LastMile = &lastMile{Courier: t.LastMile.Slug, TrackingNumber: t.LastMile.TrackingNumber}
 	}
 	for _, c := range t.Checkpoints {
-		location := c.Location
-		if location == "" {
-			country := c.CountryRegionName
-			if country == "" {
-				country = c.CountryRegion
-			}
-			location = join(c.City, c.State, country)
-		}
-		result.Checkpoints = append(result.Checkpoints, checkpoint{Time: c.Time, Status: string(c.Tag), Message: c.Message, Location: location})
+		result.Checkpoints = append(result.Checkpoints, checkpoint{Time: c.Time, Status: string(c.Tag), Message: c.Message, Location: join(c.City, c.State, c.CountryRegion)})
 	}
 	return result
 }

@@ -38,8 +38,9 @@ const (
 	// headerKey is the header of the API key
 	headerKey = "as-api-key"
 
-	// requestsPerSecond is AfterShip's rate limit, by default
-	requestsPerSecond = 10
+	// requestsPerSecond is the lowest of AfterShip's rate limits, which are
+	// of each endpoint, and is of detecting couriers
+	requestsPerSecond = 3
 
 	// maxErrorBody is the most of an error's response which is read
 	maxErrorBody = 64 << 10
@@ -54,7 +55,7 @@ const (
 
 // New returns a client for AfterShip Tracking with the API key. The endpoint
 // can be replaced with client.OptEndpoint, for example for testing, and the
-// rate limit, which is AfterShip's, with client.OptRateLimit.
+// rate limit, which is the lowest of AfterShip's, with client.OptRateLimit.
 func New(apiKey string, opts ...client.ClientOpt) (*Client, error) {
 	// Check for missing API key
 	if apiKey = strings.TrimSpace(apiKey); apiKey == "" {

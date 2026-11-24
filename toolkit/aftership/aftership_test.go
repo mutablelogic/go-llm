@@ -40,7 +40,7 @@ const private = `"customers":[{"name":"PRIVATE","email":"PRIVATE","phone_number"
 const shoes = `{"id":"t1","tracking_number":"1Z","title":"Shoes","slug":"ups","tag":"InTransit","subtag_message":"Departed Facility","active":true,"updated_at":"2026-11-24T10:00:00Z","created_at":"2026-11-20T10:00:00Z",
 	"latest_estimated_delivery":{"type":"range","datetime_min":"2026-11-25","datetime_max":"2026-11-26"},"courier_estimated_delivery_date":{"estimated_delivery_date":"2026-11-30"},
 	"origin_city":"Hamburg","origin_country_region":"DEU","destination_city":"Berlin","destination_country_region":"DEU","last_mile":{"slug":"dhl","tracking_number":"LM"},
-	"checkpoints":[{"checkpoint_time":"2026-11-21T10:00:00","tag":"InTransit","message":"Departed","city":"Hamburg","country_region":"DEU"},{"message":"Arrived","location":"Berlin hub"}],` + private + `}`
+	"checkpoints":[{"checkpoint_time":"2026-11-21T10:00:00","tag":"InTransit","message":"Departed","city":"Hamburg","country_region":"DEU"},{"message":"Arrived","location":"PRIVATE 1","city":"Berlin","postal_code":"PRIVATE","country_region":"DEU","country_region_name":"PRIVATE"}],"pickup_location":"PRIVATE 2","pickup_note":"PRIVATE",` + private + `}`
 const books = `{"id":"t2","tracking_number":"2B","title":"2B","slug":"dhl","tag":"Delivered","shipment_delivery_date":"2026-11-23","courier_estimated_delivery_date":{"estimated_delivery_date":"2026-11-22"},` + private + `}`
 
 func newServer(t *testing.T) (*server, *toolkit.Toolkit) {
@@ -149,7 +149,7 @@ func Test_List(t *testing.T) {
 		assert.Equal(t, map[string]any{"courier": "dhl", "tracking_number": "LM"}, one["last_mile"])
 		assert.Equal(t, []any{
 			map[string]any{"time": "2026-11-21T10:00:00", "status": "InTransit", "message": "Departed", "location": "Hamburg, DEU"},
-			map[string]any{"message": "Arrived", "location": "Berlin hub"},
+			map[string]any{"message": "Arrived", "location": "Berlin, DEU"},
 		}, one["checkpoints"])
 		assert.NotContains(t, one, "active")
 		assert.NotContains(t, one, "tracking_stopped")
