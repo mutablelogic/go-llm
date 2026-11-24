@@ -128,21 +128,18 @@ func AddTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 	)
 }
 
-// AddWebhook adds the webhook namespace to the toolkit, for the webhook
-// server whose endpoint is in the WebhookEndpointCredential credential, and
-// returns it, which the server runs, or nil, when the credential can't be
-// read, such as when it doesn't exist, which is logged as a warning. Returns
-// an error when the endpoint isn't a URL.
+// AddWebhook adds the webhook namespace to the toolkit, as AddTools adds the
+// others, for the webhook server whose endpoint is in the
+// WebhookEndpointCredential credential, and returns it, as the server runs
+// it, or nil, when it isn't added
 func AddWebhook(ctx server.Cmd, tools *toolkit.Toolkit) (*webhook.Namespace, error) {
-	endpoint, err := tools.Credential(ctx.Context(), WebhookEndpointCredential)
-	if err != nil {
-		ctx.Logger().WarnContext(ctx.Context(), "webhooks not started, as their credential can't be read", "namespace", webhook.Name, "credential", WebhookEndpointCredential, "error", err.Error())
-		return nil, nil
-	}
-	ns, err := webhook.New(endpoint, tools.ClientOpts()...)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", WebhookEndpointCredential, err)
-	} else if err := add(ctx, tools, ns); err != nil {
+	var ns *webhook.Namespace
+	if err := addNamespace(ctx, tools, webhook.Name, WebhookEndpointCredential, func(endpoint string, opts ...client.ClientOpt) (_ toolkit.Namespace, err error) {
+		if ns, err = webhook.New(endpoint, opts...); err != nil {
+			return nil, fmt.Errorf("%s: %w", WebhookEndpointCredential, err)
+		}
+		return ns, nil
+	}); err != nil {
 		return nil, err
 	}
 	return ns, nil
@@ -167,8 +164,8 @@ func addHomeAssistantTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 }
 
 // addNamespace adds the namespace of tools returned by fn to the toolkit,
-// when the credential holding their API key exists, and logs its tools. fn
-// is called with the API key, and the toolkit's client options. When the
+// when the credential holding their API key, or endpoint, exists, and logs
+// its tools. fn is called with it, and the toolkit's client options. When the
 // credential can't be read, such as when it doesn't exist, a warning is
 // logged, with the namespace's name, and the tools aren't added.
 func addNamespace(ctx server.Cmd, tools *toolkit.Toolkit, name, key string, fn func(string, ...client.ClientOpt) (toolkit.Namespace, error)) error {
