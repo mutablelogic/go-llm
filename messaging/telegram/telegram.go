@@ -39,8 +39,9 @@ type Telegram struct {
 	// The bot's username, once it's known, and, while getMe is rate
 	// limited, its error, and until when, which Receive, and Link, share,
 	// so neither calls it again before then. lookup is held while it's
-	// called, so it's called once at a time.
-	lookup   sync.Mutex
+	// called, so it's called once at a time, which what's waiting for it
+	// can stop waiting for, when its context is cancelled.
+	lookup   chan struct{}
 	mu       sync.Mutex
 	username string
 	limited  *Error
@@ -106,7 +107,7 @@ func New(token string, opts ...Opt) (*Telegram, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Telegram{client: c, tracer: o.tracer}, nil
+	return &Telegram{client: c, tracer: o.tracer, lookup: make(chan struct{}, 1)}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -156,9 +157,15 @@ func (t *Telegram) Link(ctx context.Context, code string) (_ string, err error) 
 // rate limited, until it can be, so what's waiting for it, such as a link,
 // is told why at once, with how much longer to wait.
 func (t *Telegram) me(ctx context.Context) (string, error) {
-	t.lookup.Lock()
-	defer t.lookup.Unlock()
-	if username, err := t.known(); username != "" || err != nil {
+	select {
+	case t.lookup <- struct{}{}:
+		defer func() { <-t.lookup }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	} else if username, err := t.known(); username != "" || err != nil {
 		return username, err
 	}
 	me, err := callOnce[user](ctx, t.client, "getMe", struct{}{})

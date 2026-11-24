@@ -736,3 +736,27 @@ func Test_Telegram_ErrorKinds(t *testing.T) {
 		assert.ErrorIs(t, &Error{Method: "getMe", Code: code}, kind, code)
 	}
 }
+
+func Test_Telegram_LookupCancelled(t *testing.T) {
+	// A link, which waits for getMe, which another is calling, stops
+	// waiting once its context is cancelled
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response[user]{OK: true, Result: user{ID: 1, IsBot: true, Username: "ada_bot"}})
+	}))
+	defer server.Close()
+	defer close(release)
+	tg, err := New(token, WithClientOpts(client.OptEndpoint(server.URL)))
+	require.NoError(t, err)
+	go func() { _, _ = tg.Connect(context.Background()) }()
+	require.Eventually(t, func() bool { return len(tg.lookup) == 1 }, time.Second, 5*time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err = tg.Link(ctx, "abc")
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), time.Second)
+}

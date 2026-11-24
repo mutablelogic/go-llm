@@ -41,6 +41,7 @@ type status struct {
 	shown   string    // The line which the message shows
 	id      string    // The message's identifier, once it's sent
 	edited  time.Time // When it was last sent, or changed
+	after   time.Time // When it can be sent, or changed, again, after it couldn't be
 	timer   *time.Timer
 	sending bool // Whether it's being sent, or changed
 	closed  bool
@@ -110,6 +111,9 @@ func (s *status) schedule() {
 	if s.id != "" {
 		at = s.edited.Add(s.interval)
 	}
+	if at.Before(s.after) {
+		at = s.after
+	}
 	s.timer = time.AfterFunc(max(at.Sub(now), 0), s.flush)
 }
 
@@ -145,6 +149,10 @@ func (s *status) flush() {
 	s.sending = false
 	if err == nil && sent != "" {
 		s.id, s.shown, s.edited = sent, line, time.Now()
+	} else if err != nil {
+		// It isn't tried again for a while, or as long as the error says,
+		// when it's longer, such as when it's rate limited
+		s.after = time.Now().Add(max(s.interval, RetryAfter(err)))
 	}
 	orphan := ""
 	switch {
