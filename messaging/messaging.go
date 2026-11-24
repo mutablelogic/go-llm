@@ -91,6 +91,10 @@ type Delivery struct {
 type received struct {
 	channel schema.Channel
 	message Message
+
+	// The span of when it was received, which the span of its handling is
+	// in, so they're one trace
+	span trace.SpanContext
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -189,7 +193,7 @@ func (m *Messaging) Providers() []string {
 // there's more than one, and ErrNotFound when there's no provider with the
 // name.
 func (m *Messaging) Connect(ctx context.Context, session uuid.UUID, provider string) (_ string, _ time.Time, err error) {
-	_, endSpan := otel.StartSpan(m.tracer, ctx, "messaging.Connect",
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "messaging.Connect",
 		attribute.String("arg.session", session.String()),
 		attribute.String("arg.provider", provider),
 	)
@@ -216,7 +220,14 @@ func (m *Messaging) Connect(ctx context.Context, session uuid.UUID, provider str
 	}
 	m.codes[code] = pairing{session: session, provider: p.Name(), expires: expires}
 	m.mu.Unlock()
-	return p.Link(code), expires, nil
+	link, err := p.Link(ctx, code)
+	if err != nil {
+		m.mu.Lock()
+		delete(m.codes, code)
+		m.mu.Unlock()
+		return "", time.Time{}, err
+	}
+	return link, expires, nil
 }
 
 // List returns the channels of the session, or all of them, when it's the
@@ -441,38 +452,93 @@ func (m *Messaging) provider(name string) (Provider, error) {
 	return nil, llm.ErrNotFound.Withf("messaging provider %q, which isn't one of %s", name, strings.Join(m.Providers(), ", "))
 }
 
-// receive receives the provider's messages, until the context is
-// cancelled, trying again, when it can't, waiting longer each time, until
-// it has received a message
+// receive connects the provider, when it's a Connector, and then receives
+// its messages, until the context is cancelled, which are logged, trying
+// again, when it can't, waiting longer each time, until it has received a
+// message, and at least as long as its error says, such as when it's rate
+// limited. It stops, when it's forbidden, such as for a token which isn't
+// the provider's.
 func (m *Messaging) receive(ctx context.Context, logger *slog.Logger, provider Provider) {
+	connector, connects := provider.(Connector)
+	connected := !connects
 	wait := retryMin
 	for {
-		err := provider.Receive(ctx, func(ctx context.Context, message Message) error {
-			wait = retryMin
-			err := m.received(ctx, logger, provider, message)
-			if err != nil && ctx.Err() == nil {
-				logger.ErrorContext(ctx, "message not handled", "provider", provider.Name(), "address", message.Address, "error", err.Error())
+		var err error
+		connecting := !connected
+		if connecting {
+			var name string
+			if name, err = connector.Connect(ctx); err == nil {
+				connected = true
+				logger.InfoContext(ctx, "messaging connected", "provider", provider.Name(), "as", name)
 			}
-			return err
-		})
+		}
+		if err == nil {
+			err = m.receiveOnce(ctx, logger, provider, &wait)
+			connecting = false
+		}
 		if ctx.Err() != nil {
 			return
+		}
+
+		// What it couldn't do is logged, and it's tried again, unless it's
+		// forbidden
+		what := "messages not received"
+		if connecting {
+			what = "messaging not connected"
+		}
+		delay, ok := retryDelay(wait, err)
+		if !ok {
+			logger.ErrorContext(ctx, what+", and won't be, until the server restarts", "provider", provider.Name(), "error", err.Error())
+			return
 		} else if err != nil {
-			logger.ErrorContext(ctx, "messages not received", "provider", provider.Name(), "retry", wait.String(), "error", err.Error())
+			logger.ErrorContext(ctx, what, "provider", provider.Name(), "retry", delay.String(), "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(wait):
+		case <-time.After(delay):
 		}
 		wait = min(wait*2, retryMax)
 	}
 }
 
+// receiveOnce receives the provider's messages, until it can't, or the
+// context is cancelled, setting the wait to its least, as one is received
+func (m *Messaging) receiveOnce(ctx context.Context, logger *slog.Logger, provider Provider, wait *time.Duration) error {
+	return provider.Receive(ctx, func(ctx context.Context, message Message) error {
+		*wait = retryMin
+		err := m.received(ctx, logger, provider, message)
+		if err != nil && ctx.Err() == nil {
+			logger.ErrorContext(ctx, "message not handled", "provider", provider.Name(), "address", message.Address, "error", err.Error())
+		}
+		return err
+	})
+}
+
+// retryDelay returns how long to wait before receiving again, after the
+// error, which is the wait, or as long as the error says, when it's longer,
+// such as when it's rate limited, and false, when it isn't received again,
+// as it's forbidden, such as for a token which isn't the provider's
+func retryDelay(wait time.Duration, err error) (time.Duration, bool) {
+	if errors.Is(err, llm.ErrForbidden) {
+		return 0, false
+	}
+	return max(wait, RetryAfter(err)), true
+}
+
 // received connects the chat the message was sent in, when it has a code,
 // or queues it for its channel's session, or ignores it, when its chat
 // isn't connected
-func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider Provider, message Message) error {
+func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider Provider, message Message) (err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "messaging.Received",
+		attribute.String("arg.provider", provider.Name()),
+		attribute.String("arg.address", message.Address),
+		attribute.Bool("arg.code", message.Code != ""),
+		attribute.Int("arg.text", len(message.Text)),
+		attribute.Int("arg.attachments", len(message.Attachments)),
+	)
+	defer func() { endSpan(err) }()
+
 	if message.Code != "" {
 		channel, err := m.pair(ctx, provider, message)
 		switch {
@@ -495,7 +561,7 @@ func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider 
 	} else if (strings.TrimSpace(message.Text) == "" && len(message.Attachments) == 0) || m.chat == nil {
 		return nil
 	}
-	if !m.enqueue(ctx, logger, received{channel: channel, message: message}) {
+	if !m.enqueue(ctx, logger, received{channel: channel, message: message, span: trace.SpanContextFromContext(ctx)}) {
 		_, err := provider.Send(ctx, message.Address, textBusy)
 		return err
 	}
@@ -624,12 +690,22 @@ func (m *Messaging) handle(ctx context.Context, logger *slog.Logger, r received)
 	if provider == nil {
 		return
 	}
+
+	// It's traced in the trace of when it was received
+	var err error
+	ctx, endSpan := otel.StartSpan(m.tracer, trace.ContextWithSpanContext(ctx, r.span), "messaging.Handle",
+		attribute.String("arg.provider", r.channel.Provider),
+		attribute.String("arg.address", r.channel.Address),
+		attribute.String("arg.session", r.channel.Session.String()),
+	)
+	defer func() { endSpan(err) }()
+
 	// What's happening, such as what the tools it calls are doing, is shown
 	// in a message, once the reply has taken a while, which is deleted once
 	// it's replied
 	stop := m.typing(ctx, provider, r.channel.Address)
 	progress := newStatus(ctx, provider, r.channel.Address)
-	err := m.chat(ctx, r.channel, r.message, progress.show)
+	err = m.chat(ctx, r.channel, r.message, progress.show)
 	progress.close()
 	stop()
 	if err == nil || ctx.Err() != nil {
@@ -664,14 +740,17 @@ func (m *Messaging) typing(ctx context.Context, provider Provider, address strin
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(typingInterval)
-		defer ticker.Stop()
+		timer := time.NewTimer(typingInterval)
+		defer timer.Stop()
 		for {
-			_ = typer.Typing(ctx, address)
+			// It's shown again after a while, or after as long as its
+			// error says, when it's longer, such as when it's rate limited
+			err := typer.Typing(ctx, address)
+			timer.Reset(max(typingInterval, RetryAfter(err)))
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-timer.C:
 			}
 		}
 	}()

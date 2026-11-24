@@ -21,6 +21,10 @@ import (
 	messaging "github.com/mutablelogic/go-llm/messaging"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
+	attribute "go.opentelemetry.io/otel/attribute"
+	codes "go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	tracetest "go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 const token = "123456:SECRET-token"
@@ -33,8 +37,23 @@ type bot struct {
 	uploads []uploaded
 	paths   []string
 	ids     int64
-	batch   int      // The most updates it returns at once, or all of them
-	edits   []string // The messages which were changed, or deleted
+	batch   int            // The most updates it returns at once, or all of them
+	edits   []string       // The messages which were changed, or deleted
+	limited map[string]int // The methods which are rate limited, and how many more times
+}
+
+// limit rate limits the method, the next times it's called, and returns
+// whether it was
+func (b *bot) limit(w http.ResponseWriter, method string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.limited[method] <= 0 {
+		return false
+	}
+	b.limited[method]--
+	w.WriteHeader(http.StatusTooManyRequests)
+	_, _ = w.Write([]byte(`{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 1","parameters":{"retry_after":1}}`))
+	return true
 }
 
 // uploaded is a file which was sent, with the method, and field, it was sent
@@ -59,6 +78,9 @@ func (b *bot) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"ok":false,"error_code":401,"description":"Unauthorized"}`))
+		return
+	}
+	if b.limit(w, method) {
 		return
 	}
 	switch method {
@@ -161,29 +183,134 @@ func newBot(t *testing.T, b *bot) *Telegram {
 	t.Helper()
 	server := httptest.NewServer(b)
 	t.Cleanup(server.Close)
-	tg, err := New(context.Background(), token, client.OptEndpoint(server.URL))
+	tg, err := New(token, WithClientOpts(client.OptEndpoint(server.URL)))
 	require.NoError(t, err)
 	return tg
 }
 
 func Test_Telegram_New(t *testing.T) {
+	ctx := context.Background()
 	b := &bot{}
 	tg := newBot(t, b)
-	assert.Equal(t, "ada_bot", tg.Username())
+
+	// Telegram isn't called, until the username is needed, once
+	assert.Empty(t, b.paths)
+	assert.Empty(t, tg.Username())
 	assert.Equal(t, "telegram", tg.Name())
-	assert.Equal(t, "https://t.me/ada_bot?start=abc-_1", tg.Link("abc-_1"))
+	name, err := tg.Connect(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "@ada_bot", name)
+	link, err := tg.Link(ctx, "abc-_1")
+	require.NoError(t, err)
+	assert.Equal(t, "https://t.me/ada_bot?start=abc-_1", link)
+	assert.Equal(t, "ada_bot", tg.Username())
+	_, err = tg.Link(ctx, "again")
+	require.NoError(t, err)
 	assert.Equal(t, []string{"/bot" + token + "/getMe"}, b.paths)
 
-	// A wrong token is an error, which doesn't have it
+	// A wrong token is ErrForbidden, which doesn't have it
 	server := httptest.NewServer(b)
 	defer server.Close()
-	_, err := New(context.Background(), "999:WRONG", client.OptEndpoint(server.URL))
+	wrong, err := New("999:WRONG", WithClientOpts(client.OptEndpoint(server.URL)))
+	require.NoError(t, err)
+	_, err = wrong.Link(ctx, "abc")
 	require.Error(t, err)
+	assert.ErrorIs(t, err, llm.ErrForbidden)
 	assert.Contains(t, err.Error(), "Unauthorized")
 	assert.NotContains(t, err.Error(), "WRONG")
+	err = wrong.Receive(ctx, func(context.Context, messaging.Message) error { return nil })
+	assert.ErrorIs(t, err, llm.ErrForbidden)
 
-	_, err = New(context.Background(), " ")
+	_, err = New(" ")
 	assert.Error(t, err)
+}
+
+func Test_Telegram_RateLimited(t *testing.T) {
+	ctx := context.Background()
+
+	// A link, and receiving, aren't tried again, so they say why at once,
+	// with how long to wait
+	b := &bot{limited: map[string]int{"getMe": 1}}
+	tg := newBot(t, b)
+	_, err := tg.Link(ctx, "abc")
+	var e *Error
+	require.ErrorAs(t, err, &e)
+	assert.Equal(t, http.StatusTooManyRequests, e.Code)
+	assert.Equal(t, "getMe", e.Method)
+	assert.Equal(t, time.Second, e.RetryAfter())
+	assert.Equal(t, time.Second, messaging.RetryAfter(err))
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	assert.Equal(t, "telegram getMe: Too Many Requests: retry after 1", err.Error())
+
+	// Until it can be, getMe isn't called again, by a link, or receiving,
+	// which are told how much longer to wait
+	_, err = tg.Link(ctx, "abc")
+	require.ErrorAs(t, err, &e)
+	assert.Greater(t, e.RetryAfter(), time.Duration(0))
+	assert.LessOrEqual(t, e.RetryAfter(), time.Second)
+	err = tg.Receive(ctx, func(context.Context, messaging.Message) error { return nil })
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	assert.Len(t, b.paths, 1)
+
+	// Once it can be, it is
+	time.Sleep(time.Second)
+	link, err := tg.Link(ctx, "abc")
+	require.NoError(t, err)
+	assert.Equal(t, "https://t.me/ada_bot?start=abc", link)
+	assert.Len(t, b.paths, 2)
+
+	// Links at once call getMe once
+	b = &bot{}
+	tg = newBot(t, b)
+	var wg sync.WaitGroup
+	for range 5 {
+		wg.Go(func() {
+			_, err := tg.Link(ctx, "abc")
+			assert.NoError(t, err)
+		})
+	}
+	wg.Wait()
+	assert.Equal(t, []string{"/bot" + token + "/getMe"}, b.paths)
+
+	b = &bot{limited: map[string]int{"getUpdates": 1}}
+	tg = newBot(t, b)
+	err = tg.Receive(ctx, func(context.Context, messaging.Message) error { return nil })
+	assert.Equal(t, time.Second, messaging.RetryAfter(err))
+
+	// A message, and a file, are sent again, once they can be
+	b = &bot{limited: map[string]int{"sendMessage": 1, "sendDocument": 1}}
+	tg = newBot(t, b)
+	start := time.Now()
+	sent, err := tg.Send(ctx, "7", "hello")
+	require.NoError(t, err)
+	assert.Len(t, sent, 1)
+	assert.GreaterOrEqual(t, time.Since(start), time.Second)
+	opened := 0
+	sent, err = tg.SendFile(ctx, "7", messaging.File{Name: "notes.txt", Type: "text/plain", Size: 5}, func() (io.ReadCloser, error) {
+		opened++
+		return io.NopCloser(strings.NewReader("notes")), nil
+	}, "")
+	require.NoError(t, err)
+	assert.Len(t, sent, 1)
+	assert.Equal(t, 2, opened)
+	require.Len(t, b.uploads, 1)
+	assert.Equal(t, "notes", b.uploads[0].content)
+
+	// It isn't sent again, more than a few times
+	b = &bot{limited: map[string]int{"sendMessage": maxAttempts}}
+	tg = newBot(t, b)
+	_, err = tg.Send(ctx, "7", "hello")
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	assert.Empty(t, b.sent)
+
+	// Nor after the context is cancelled
+	b = &bot{limited: map[string]int{"sendMessage": 1}}
+	tg = newBot(t, b)
+	cancelled, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	_, err = tg.Send(cancelled, "7", "hello")
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	assert.Empty(t, b.sent)
 }
 
 func Test_Telegram_Receive(t *testing.T) {
@@ -280,7 +407,9 @@ func Test_Telegram_RedirectError(t *testing.T) {
 		w.WriteHeader(http.StatusFound)
 	}))
 	defer server.Close()
-	_, err := New(context.Background(), token, client.OptEndpoint(server.URL))
+	tg, err := New(token, WithClientOpts(client.OptEndpoint(server.URL)))
+	require.NoError(t, err)
+	_, err = tg.Link(context.Background(), "abc")
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "SECRET")
 }
@@ -543,7 +672,7 @@ func Test_Telegram_DownloadClosed(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	tg, err := New(context.Background(), token, client.OptEndpoint(server.URL))
+	tg, err := New(token, WithClientOpts(client.OptEndpoint(server.URL)))
 	require.NoError(t, err)
 	content, err := tg.opener("big")(context.Background())
 	require.NoError(t, err)
@@ -557,4 +686,77 @@ func Test_Telegram_DownloadClosed(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the download wasn't cancelled when it was closed")
 	}
+}
+
+func Test_Telegram_Tracing(t *testing.T) {
+	ctx := context.Background()
+	recorder := tracetest.NewSpanRecorder()
+	tracer := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)).Tracer("test")
+	server := httptest.NewServer(&bot{limited: map[string]int{"sendMessage": 1}})
+	defer server.Close()
+	tg, err := New(token, WithTracer(tracer), WithClientOpts(client.OptEndpoint(server.URL)))
+	require.NoError(t, err)
+
+	// A message, which is rate limited, is one span, which says it waited
+	_, err = tg.Send(ctx, "7", "hello")
+	require.NoError(t, err)
+	spans := recorder.Ended()
+	require.Len(t, spans, 1)
+	assert.Equal(t, "telegram.Send", spans[0].Name())
+	assert.Contains(t, spans[0].Attributes(), attribute.String("arg.address", "7"))
+	require.Len(t, spans[0].Events(), 1)
+	assert.Equal(t, "rate limited", spans[0].Events()[0].Name)
+	assert.Contains(t, spans[0].Events()[0].Attributes, attribute.String("retry_after", "1s"))
+
+	// A link, whose error is the span's
+	wrong, err := New("999:WRONG", WithTracer(tracer), WithClientOpts(client.OptEndpoint(server.URL)))
+	require.NoError(t, err)
+	_, err = wrong.Link(ctx, "abc")
+	require.Error(t, err)
+	spans = recorder.Ended()
+	require.Len(t, spans, 2)
+	assert.Equal(t, "telegram.Link", spans[1].Name())
+	assert.Equal(t, codes.Error, spans[1].Status().Code)
+	assert.NotContains(t, spans[1].Status().Description, "WRONG")
+}
+
+func Test_Telegram_ErrorKinds(t *testing.T) {
+	for code, kind := range map[int]error{
+		http.StatusBadRequest:          llm.ErrBadParameter,
+		http.StatusUnauthorized:        llm.ErrForbidden,
+		http.StatusForbidden:           llm.ErrForbidden,
+		http.StatusNotFound:            llm.ErrNotFound,
+		http.StatusConflict:            llm.ErrConflict,
+		http.StatusTooManyRequests:     llm.ErrServiceUnavailable,
+		http.StatusInternalServerError: llm.ErrServiceUnavailable,
+		http.StatusBadGateway:          llm.ErrServiceUnavailable,
+		599:                            llm.ErrServiceUnavailable,
+		http.StatusTeapot:              llm.ErrInternalServerError,
+	} {
+		assert.ErrorIs(t, &Error{Method: "getMe", Code: code}, kind, code)
+	}
+}
+
+func Test_Telegram_LookupCancelled(t *testing.T) {
+	// A link, which waits for getMe, which another is calling, stops
+	// waiting once its context is cancelled
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response[user]{OK: true, Result: user{ID: 1, IsBot: true, Username: "ada_bot"}})
+	}))
+	defer server.Close()
+	defer close(release)
+	tg, err := New(token, WithClientOpts(client.OptEndpoint(server.URL)))
+	require.NoError(t, err)
+	go func() { _, _ = tg.Connect(context.Background()) }()
+	require.Eventually(t, func() bool { return len(tg.lookup) == 1 }, time.Second, 5*time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err = tg.Link(ctx, "abc")
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), time.Second)
 }

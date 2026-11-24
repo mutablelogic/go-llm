@@ -21,6 +21,10 @@ import (
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
+	attribute "go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	tracetest "go.opentelemetry.io/otel/sdk/trace/tracetest"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -34,6 +38,7 @@ type fake struct {
 	mu       sync.Mutex
 	sent     map[string][]string
 	ids      int
+	linkErr  error // Why it can't make a link, when it can't
 }
 
 func newFake(name string) *fake {
@@ -42,7 +47,12 @@ func newFake(name string) *fake {
 
 func (f *fake) Name() string { return f.name }
 
-func (f *fake) Link(code string) string { return "https://example.com/" + f.name + "?start=" + code }
+func (f *fake) Link(_ context.Context, code string) (string, error) {
+	if f.linkErr != nil {
+		return "", f.linkErr
+	}
+	return "https://example.com/" + f.name + "?start=" + code, nil
+}
 
 // Private chats, of the fake, are those whose addresses don't start with
 // a hyphen, as Telegram's are
@@ -588,4 +598,68 @@ func Test_Messaging_SessionPrompt(t *testing.T) {
 	assert.Contains(t, prompt, "`voice-note`")
 	assert.Contains(t, prompt, "`llm:transcribe`")
 	assert.Empty(t, m.SessionPrompt(ctx, uuid.New()), "another conversation's chats aren't its")
+}
+
+func Test_Messaging_ConnectUnreachable(t *testing.T) {
+	// A provider which can't make a link, such as while it's rate limited,
+	// says why
+	ctx := context.Background()
+	provider := newFake("fake")
+	provider.linkErr = llm.ErrServiceUnavailable.With("Too Many Requests: retry after 32")
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider))
+	require.NoError(t, err)
+	_, _, err = m.Connect(ctx, uuid.New(), "")
+	require.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	assert.Contains(t, err.Error(), "retry after 32")
+
+	// Once it can, it does
+	provider.linkErr = nil
+	link, _, err := m.Connect(ctx, uuid.New(), "")
+	require.NoError(t, err)
+	assert.NotEmpty(t, code(t, link))
+}
+
+func Test_Messaging_Tracing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	recorder := tracetest.NewSpanRecorder()
+	tracer := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)).Tracer("test")
+	provider := newFake("fake")
+	chatted := make(chan trace.SpanContext, 1)
+	m, err := messaging.New(messaging.NewStore(), messaging.WithTracer(tracer), messaging.WithProvider(provider), messaging.WithChat(func(ctx context.Context, _ schema.Channel, _ messaging.Message, _ func(string)) error {
+		chatted <- trace.SpanContextFromContext(ctx)
+		return nil
+	}))
+	require.NoError(t, err)
+	go m.Run(ctx, nil)
+
+	link, _, err := m.Connect(ctx, uuid.New(), "")
+	require.NoError(t, err)
+	provider.incoming <- messaging.Message{Address: "1", Code: code(t, link), Text: "/start"}
+	provider.incoming <- messaging.Message{Address: "1", Text: "hello"}
+
+	// The message is chatted in the span which handles it, which is in the
+	// trace of when it was received
+	var chat trace.SpanContext
+	select {
+	case chat = <-chatted:
+	case <-time.After(time.Second):
+		t.Fatal("message not sent to the session")
+	}
+	var received, handle sdktrace.ReadOnlySpan
+	assert.Eventually(t, func() bool {
+		received, handle = nil, nil
+		for _, span := range recorder.Ended() {
+			switch {
+			case span.Name() == "messaging.Received" && span.SpanContext().TraceID() == chat.TraceID():
+				received = span
+			case span.Name() == "messaging.Handle":
+				handle = span
+			}
+		}
+		return received != nil && handle != nil
+	}, time.Second, 10*time.Millisecond)
+	assert.Equal(t, chat.SpanID(), handle.SpanContext().SpanID())
+	assert.Equal(t, received.SpanContext().SpanID(), handle.Parent().SpanID())
+	assert.Contains(t, received.Attributes(), attribute.String("arg.address", "1"))
 }

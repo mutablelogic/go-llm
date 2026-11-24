@@ -21,7 +21,7 @@ type editor struct {
 }
 
 func (*editor) Name() string                                                        { return "fake" }
-func (*editor) Link(string) string                                                  { return "" }
+func (*editor) Link(context.Context, string) (string, error)                        { return "", nil }
 func (*editor) Receive(context.Context, func(context.Context, Message) error) error { return nil }
 
 func (e *editor) Send(_ context.Context, _, text string) ([]Sent, error) {
@@ -115,6 +115,22 @@ func Test_Status(t *testing.T) {
 		assert.Equal(t, []string{"send 1 ⏳ Transcribing the recording", "delete 1"}, e.got())
 	})
 
+	t.Run("Rate limited", func(t *testing.T) {
+		// A message which can't be sent, as it's rate limited, isn't sent
+		// again until it says it can be, and then is
+		e := &limitedEditor{wait: 400 * time.Millisecond}
+		s := newTestStatus(e)
+		s.show("Transcribing the recording")
+		require.Eventually(t, func() bool { return e.tries() == 1 }, time.Second, 5*time.Millisecond)
+		s.show("Speaking the text aloud")
+		time.Sleep(250 * time.Millisecond)
+		assert.Equal(t, 1, e.tries(), "not sent again, until it can be")
+		require.Eventually(t, func() bool { return len(e.got()) == 1 }, time.Second, 5*time.Millisecond)
+		assert.Equal(t, 2, e.tries())
+		assert.Equal(t, []string{"send 1 ⏳ Speaking the text aloud"}, e.got())
+		s.close()
+	})
+
 	t.Run("Can't edit", func(t *testing.T) {
 		// A provider which can't change its messages shows nothing, as the
 		// message would be left in the chat
@@ -128,6 +144,31 @@ func Test_Status(t *testing.T) {
 		s.close()
 		assert.Empty(t, p.got())
 	})
+}
+
+// limitedEditor is an editor whose first message is rate limited, for the
+// wait, and which counts how often it's sent
+type limitedEditor struct {
+	editor
+	wait time.Duration
+	n    int
+}
+
+func (e *limitedEditor) Send(ctx context.Context, address, text string) ([]Sent, error) {
+	e.mu.Lock()
+	e.n++
+	first := e.n == 1
+	e.mu.Unlock()
+	if first {
+		return nil, rateLimited(e.wait)
+	}
+	return e.editor.Send(ctx, address, text)
+}
+
+func (e *limitedEditor) tries() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.n
 }
 
 // slowEditor is an editor whose first message is sent once it's released,

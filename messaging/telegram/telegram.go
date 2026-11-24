@@ -6,20 +6,25 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	messaging "github.com/mutablelogic/go-llm/messaging"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	attribute "go.opentelemetry.io/otel/attribute"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -27,9 +32,20 @@ import (
 
 // Telegram is a Telegram bot, whose chats are channels
 type Telegram struct {
-	client   *client.Client
+	client *client.Client
+	tracer trace.Tracer
+	zone   func() *time.Location
+
+	// The bot's username, once it's known, and, while getMe is rate
+	// limited, its error, and until when, which Receive, and Link, share,
+	// so neither calls it again before then. lookup is held while it's
+	// called, so it's called once at a time, which what's waiting for it
+	// can stop waiting for, when its context is cancelled.
+	lookup   chan struct{}
+	mu       sync.Mutex
 	username string
-	zone     func() *time.Location
+	limited  *Error
+	until    time.Time
 
 	// The identifier of the next update, which only Receive changes
 	offset int64
@@ -39,6 +55,7 @@ var _ messaging.Provider = (*Telegram)(nil)
 var _ messaging.Typer = (*Telegram)(nil)
 var _ messaging.FileSender = (*Telegram)(nil)
 var _ messaging.Editor = (*Telegram)(nil)
+var _ messaging.Connector = (*Telegram)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -74,19 +91,23 @@ const (
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// New returns the bot with the token, from BotFather, with the client
-// options, such as the user agent, or an endpoint for tests, once it's
-// checked the token, and has the bot's username, which its links have
-func New(ctx context.Context, token string, opts ...client.ClientOpt) (*Telegram, error) {
-	c, err := newClient(token, opts...)
+// New returns the bot with the token, from BotFather, with the options,
+// such as its tracer, and the client options, such as the user agent, or
+// an endpoint for tests. It doesn't
+// call Telegram: the token is checked, and the bot's username, which its
+// links have, is read, once it receives messages, or makes a link, so a bot
+// which Telegram can't be reached for yet, such as while it's rate limited,
+// is still added, and is reached later.
+func New(token string, opts ...Opt) (*Telegram, error) {
+	var o opt
+	if err := o.apply(opts); err != nil {
+		return nil, err
+	}
+	c, err := newClient(token, o.clientopts...)
 	if err != nil {
 		return nil, err
 	}
-	me, err := call[user](ctx, c, "getMe", struct{}{})
-	if err != nil {
-		return nil, err
-	}
-	return &Telegram{client: c, username: me.Username}, nil
+	return &Telegram{client: c, tracer: o.tracer, lookup: make(chan struct{}, 1)}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -97,15 +118,88 @@ func (*Telegram) Name() string {
 	return Name
 }
 
-// Username returns the bot's username
+// Username returns the bot's username, once it's known, or empty
 func (t *Telegram) Username() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.username
 }
 
+// Connect checks the token, reading the bot's username, when it isn't known
+// yet, and returns it, such as @ada_bot
+func (t *Telegram) Connect(ctx context.Context) (_ string, err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Connect")
+	defer func() { endSpan(err) }()
+
+	username, err := t.me(ctx)
+	if err != nil {
+		return "", err
+	}
+	return "@" + username, nil
+}
+
 // Link returns the link which opens a chat with the bot, whose Start
-// button sends it the code
-func (t *Telegram) Link(code string) string {
-	return "https://t.me/" + url.PathEscape(t.username) + "?start=" + url.QueryEscape(code)
+// button sends it the code, or why it can't, such as that Telegram can't
+// be reached, or the token isn't a bot's, when its username isn't known
+func (t *Telegram) Link(ctx context.Context, code string) (_ string, err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Link")
+	defer func() { endSpan(err) }()
+
+	username, err := t.me(ctx)
+	if err != nil {
+		return "", err
+	}
+	return "https://t.me/" + url.PathEscape(username) + "?start=" + url.QueryEscape(code), nil
+}
+
+// me returns the bot's username, reading it, and so checking the token,
+// when it isn't known yet, once at a time. It isn't read again, when it's
+// rate limited, until it can be, so what's waiting for it, such as a link,
+// is told why at once, with how much longer to wait.
+func (t *Telegram) me(ctx context.Context) (string, error) {
+	select {
+	case t.lookup <- struct{}{}:
+		defer func() { <-t.lookup }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	} else if username, err := t.known(); username != "" || err != nil {
+		return username, err
+	}
+	me, err := callOnce[user](ctx, t.client, "getMe", struct{}{})
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var e *Error
+	if errors.As(err, &e) && e.Retry > 0 {
+		t.limited, t.until = e, time.Now().Add(e.Retry)
+	}
+	if err != nil {
+		return "", err
+	}
+	t.username, t.limited = me.Username, nil
+	return t.username, nil
+}
+
+// known returns the bot's username, when it's known, or the error of getMe,
+// with how much longer to wait, while it's rate limited, or neither
+func (t *Telegram) known() (string, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.username != "" {
+		return t.username, nil
+	} else if t.limited == nil {
+		return "", nil
+	}
+	remaining := time.Until(t.until)
+	if remaining <= 0 {
+		t.limited = nil
+		return "", nil
+	}
+	e := *t.limited
+	e.Retry = remaining
+	return "", &e
 }
 
 // Receive calls the function with each message people send the bot, until
@@ -113,6 +207,11 @@ func (t *Telegram) Link(code string) string {
 // Messages from bots, and without text, are skipped. A message is received
 // once, whatever the function returns.
 func (t *Telegram) Receive(ctx context.Context, fn func(context.Context, messaging.Message) error) error {
+	// The token is checked, and the bot's username read, first
+	if _, err := t.me(ctx); err != nil {
+		return err
+	}
+
 	// An album, whose messages, which are updates of their own, can be
 	// split between polls, is held, when it's the last of a poll, until the
 	// next, which waits for its other messages briefly
@@ -128,7 +227,7 @@ func (t *Telegram) Receive(ctx context.Context, fn func(context.Context, messagi
 			timeout = albumWait
 		}
 		pollCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout+15)*time.Second)
-		updates, err := call[[]update](pollCtx, t.client, "getUpdates", getUpdatesRequest{
+		updates, err := callOnce[[]update](pollCtx, t.client, "getUpdates", getUpdatesRequest{
 			Offset:         t.offset,
 			Timeout:        timeout,
 			AllowedUpdates: []string{"message"},
@@ -182,7 +281,13 @@ func sameAlbum(album, m *message) bool {
 // be, broken between paragraphs, or other blocks, and as plain text, when
 // Telegram can't parse its HTML, and returns the messages it was sent as.
 // Links don't have previews.
-func (t *Telegram) Send(ctx context.Context, address, text string) ([]messaging.Sent, error) {
+func (t *Telegram) Send(ctx context.Context, address, text string) (_ []messaging.Sent, err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Send",
+		attribute.String("arg.address", address),
+		attribute.Int("arg.text", len(text)),
+	)
+	defer func() { endSpan(err) }()
+
 	var result []messaging.Sent
 	for _, p := range parts(text, maxText) {
 		req := sendMessageRequest{ChatID: address, Text: p.html, ParseMode: "HTML", LinkPreviewOptions: &linkPreviewOptions{IsDisabled: true}}
@@ -207,7 +312,16 @@ func (t *Telegram) Send(ctx context.Context, address, text string) ([]messaging.
 // sent as. A caption whose formatting Telegram can't parse is sent as plain
 // text, with the file again. A file which is larger than a bot can send is
 // a note, with its name, after its caption.
-func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) ([]messaging.Sent, error) {
+func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) (_ []messaging.Sent, err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.SendFile",
+		attribute.String("arg.address", address),
+		attribute.String("arg.file", file.Name),
+		attribute.String("arg.type", file.Type),
+		attribute.Int64("arg.size", file.Size),
+		attribute.Int("arg.caption", len(caption)),
+	)
+	defer func() { endSpan(err) }()
+
 	name := fileName(file)
 	caption = strings.TrimSpace(caption)
 	var result []messaging.Sent
@@ -250,8 +364,16 @@ func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.
 
 // upload opens the file, and sends it, with its caption, which is in the
 // parse mode, when it has one, by the method for its kind, and returns the
-// message it was sent as
+// message it was sent as, opening it, and sending it, again, when it's rate
+// limited, after waiting as long as it says, for a while
 func (t *Telegram) upload(ctx context.Context, address string, file messaging.File, name string, open func() (io.ReadCloser, error), caption, parseMode string) (message, error) {
+	return retry(ctx, func() (message, error) {
+		return t.uploadOnce(ctx, address, file, name, open, caption, parseMode)
+	})
+}
+
+// uploadOnce opens the file, and sends it, once
+func (t *Telegram) uploadOnce(ctx context.Context, address string, file messaging.File, name string, open func() (io.ReadCloser, error), caption, parseMode string) (message, error) {
 	content, err := open()
 	if err != nil {
 		return message{}, err
@@ -279,7 +401,14 @@ func messageID(m message) string {
 
 // Edit changes the text of the message, which the bot sent, to the text,
 // as it is, without formatting, and does nothing when it's the same
-func (t *Telegram) Edit(ctx context.Context, address, id, text string) error {
+func (t *Telegram) Edit(ctx context.Context, address, id, text string) (err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Edit",
+		attribute.String("arg.address", address),
+		attribute.String("arg.id", id),
+		attribute.Int("arg.text", len(text)),
+	)
+	defer func() { endSpan(err) }()
+
 	messageID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return llm.ErrBadParameter.Withf("invalid message id %q", id)
@@ -292,7 +421,13 @@ func (t *Telegram) Edit(ctx context.Context, address, id, text string) error {
 }
 
 // Delete deletes the message, which the bot sent
-func (t *Telegram) Delete(ctx context.Context, address, id string) error {
+func (t *Telegram) Delete(ctx context.Context, address, id string) (err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Delete",
+		attribute.String("arg.address", address),
+		attribute.String("arg.id", id),
+	)
+	defer func() { endSpan(err) }()
+
 	messageID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return llm.ErrBadParameter.Withf("invalid message id %q", id)
@@ -302,9 +437,10 @@ func (t *Telegram) Delete(ctx context.Context, address, id string) error {
 }
 
 // Typing shows "typing…" in the chat, for five seconds, or until a message
-// is sent
+// is sent. It isn't shown again, when it's rate limited, as it's shown again
+// soon anyway.
 func (t *Telegram) Typing(ctx context.Context, address string) error {
-	_, err := call[bool](ctx, t.client, "sendChatAction", sendChatActionRequest{ChatID: address, Action: "typing"})
+	_, err := callOnce[bool](ctx, t.client, "sendChatAction", sendChatActionRequest{ChatID: address, Action: "typing"})
 	return err
 }
 

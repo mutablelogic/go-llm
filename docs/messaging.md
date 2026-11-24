@@ -26,6 +26,8 @@ llm chat "Let's talk on Telegram"
 
 - **No public address needed:** the server reads the bot's messages by long polling.
 - **One server per bot:** don't share a bot's token between servers.
+- **Reaching Telegram:** the server logs "messaging connected", with the bot's username, once it reaches Telegram, and "messaging not connected", with why, while it can't. The bot is added even while Telegram can't be reached, and is tried again, waiting longer each time, up to 5 minutes, and as long as Telegram says, when it's rate limited. Until then, asking to talk on Telegram says why it can't. A token which isn't a bot's is logged once, and isn't tried again until the server restarts.
+- **Rate limits:** a message, or a file, which Telegram rate limits is sent again, once it says it can be, up to three times, when that's within a minute.
 - **Progress:** while a reply takes a while, the chat shows what's happening, in one message, which is deleted when the reply arrives.
 
 ## Replies
