@@ -1,7 +1,10 @@
 package messaging
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -41,4 +44,49 @@ func Test_Messaging_RetryDelay(t *testing.T) {
 	// Not again, when it's forbidden
 	_, ok = retryDelay(5*time.Second, llm.ErrForbidden.With("Unauthorized"))
 	assert.False(t, ok)
+}
+
+// connector is a provider which connects, or doesn't, and counts how often
+// it receives
+type connector struct {
+	err      error
+	received chan struct{}
+}
+
+func (*connector) Name() string                                         { return "fake" }
+func (*connector) Link(context.Context, string) (string, error)         { return "", nil }
+func (c *connector) Connect(context.Context) (string, error)            { return "@bot", c.err }
+func (*connector) Send(context.Context, string, string) ([]Sent, error) { return nil, nil }
+func (c *connector) Receive(ctx context.Context, _ func(context.Context, Message) error) error {
+	c.received <- struct{}{}
+	<-ctx.Done()
+	return nil
+}
+
+func Test_Messaging_ConnectLogged(t *testing.T) {
+	// Connected, which is logged, before it receives
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	m := &Messaging{}
+	ctx, cancel := context.WithCancel(context.Background())
+	c := &connector{received: make(chan struct{}, 1)}
+	done := make(chan struct{})
+	go func() { m.receive(ctx, logger, c); close(done) }()
+	select {
+	case <-c.received:
+	case <-time.After(time.Second):
+		t.Fatal("not received")
+	}
+	cancel()
+	<-done
+	assert.Contains(t, buf.String(), `msg="messaging connected" provider=fake as=@bot`)
+
+	// Not connected, as it's forbidden, which is logged, and it doesn't
+	// receive, nor try again
+	buf.Reset()
+	c = &connector{err: llm.ErrForbidden.With("Unauthorized"), received: make(chan struct{}, 1)}
+	m.receive(context.Background(), logger, c)
+	assert.Contains(t, buf.String(), `msg="messaging not connected, and won't be, until the server restarts" provider=fake`)
+	assert.Contains(t, buf.String(), "Unauthorized")
+	assert.Empty(t, c.received)
 }

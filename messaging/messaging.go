@@ -452,31 +452,46 @@ func (m *Messaging) provider(name string) (Provider, error) {
 	return nil, llm.ErrNotFound.Withf("messaging provider %q, which isn't one of %s", name, strings.Join(m.Providers(), ", "))
 }
 
-// receive receives the provider's messages, until the context is
-// cancelled, trying again, when it can't, waiting longer each time, until
-// it has received a message, and at least as long as its error says, such
-// as when it's rate limited. It stops, when it's forbidden, such as for a
-// token which isn't the provider's.
+// receive connects the provider, when it's a Connector, and then receives
+// its messages, until the context is cancelled, which are logged, trying
+// again, when it can't, waiting longer each time, until it has received a
+// message, and at least as long as its error says, such as when it's rate
+// limited. It stops, when it's forbidden, such as for a token which isn't
+// the provider's.
 func (m *Messaging) receive(ctx context.Context, logger *slog.Logger, provider Provider) {
+	connector, connects := provider.(Connector)
+	connected := !connects
 	wait := retryMin
 	for {
-		err := provider.Receive(ctx, func(ctx context.Context, message Message) error {
-			wait = retryMin
-			err := m.received(ctx, logger, provider, message)
-			if err != nil && ctx.Err() == nil {
-				logger.ErrorContext(ctx, "message not handled", "provider", provider.Name(), "address", message.Address, "error", err.Error())
+		var err error
+		connecting := !connected
+		if connecting {
+			var name string
+			if name, err = connector.Connect(ctx); err == nil {
+				connected = true
+				logger.InfoContext(ctx, "messaging connected", "provider", provider.Name(), "as", name)
 			}
-			return err
-		})
+		}
+		if err == nil {
+			err = m.receiveOnce(ctx, logger, provider, &wait)
+			connecting = false
+		}
 		if ctx.Err() != nil {
 			return
 		}
+
+		// What it couldn't do is logged, and it's tried again, unless it's
+		// forbidden
+		what := "messages not received"
+		if connecting {
+			what = "messaging not connected"
+		}
 		delay, ok := retryDelay(wait, err)
 		if !ok {
-			logger.ErrorContext(ctx, "messages not received, and won't be, until the server restarts", "provider", provider.Name(), "error", err.Error())
+			logger.ErrorContext(ctx, what+", and won't be, until the server restarts", "provider", provider.Name(), "error", err.Error())
 			return
 		} else if err != nil {
-			logger.ErrorContext(ctx, "messages not received", "provider", provider.Name(), "retry", delay.String(), "error", err.Error())
+			logger.ErrorContext(ctx, what, "provider", provider.Name(), "retry", delay.String(), "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():
@@ -485,6 +500,19 @@ func (m *Messaging) receive(ctx context.Context, logger *slog.Logger, provider P
 		}
 		wait = min(wait*2, retryMax)
 	}
+}
+
+// receiveOnce receives the provider's messages, until it can't, or the
+// context is cancelled, setting the wait to its least, as one is received
+func (m *Messaging) receiveOnce(ctx context.Context, logger *slog.Logger, provider Provider, wait *time.Duration) error {
+	return provider.Receive(ctx, func(ctx context.Context, message Message) error {
+		*wait = retryMin
+		err := m.received(ctx, logger, provider, message)
+		if err != nil && ctx.Err() == nil {
+			logger.ErrorContext(ctx, "message not handled", "provider", provider.Name(), "address", message.Address, "error", err.Error())
+		}
+		return err
+	})
 }
 
 // retryDelay returns how long to wait before receiving again, after the

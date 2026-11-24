@@ -42,6 +42,15 @@ type Provider interface {
 	Send(ctx context.Context, address, text string) ([]Sent, error)
 }
 
+// Connector is a provider which is connected before it receives messages,
+// such as to check its credentials, whose errors are those Receive's are,
+// such as ErrForbidden
+type Connector interface {
+	// Connect connects to the provider, and returns who it is there, such
+	// as the bot's username, which is logged
+	Connect(ctx context.Context) (string, error)
+}
+
 // RetryAfter returns how long to wait before trying again, which the error,
 // such as a provider's which is rate limited, says, with its RetryAfter
 // method, or zero, when it doesn't say

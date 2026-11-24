@@ -54,6 +54,7 @@ var _ messaging.Provider = (*Telegram)(nil)
 var _ messaging.Typer = (*Telegram)(nil)
 var _ messaging.FileSender = (*Telegram)(nil)
 var _ messaging.Editor = (*Telegram)(nil)
+var _ messaging.Connector = (*Telegram)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS
@@ -121,6 +122,19 @@ func (t *Telegram) Username() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.username
+}
+
+// Connect checks the token, reading the bot's username, when it isn't known
+// yet, and returns it, such as @ada_bot
+func (t *Telegram) Connect(ctx context.Context) (_ string, err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Connect")
+	defer func() { endSpan(err) }()
+
+	username, err := t.me(ctx)
+	if err != nil {
+		return "", err
+	}
+	return "@" + username, nil
 }
 
 // Link returns the link which opens a chat with the bot, whose Start
