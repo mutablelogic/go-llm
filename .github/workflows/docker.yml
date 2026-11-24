@@ -19,12 +19,16 @@ permissions:
   packages: write
 
 jobs:
+  # Each image, of docker/Dockerfile.<image>, is built for each
+  # architecture: llm, the server, and webhook, the server of webhooks
   linux:
-    name: Build Linux ${{ matrix.arch }} image
+    name: Build ${{ matrix.image }} Linux ${{ matrix.arch }} image
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        image: [llm, webhook]
+        arch: [amd64, arm64]
         include:
           - arch: amd64
             runner: ubuntu-24.04
@@ -52,7 +56,7 @@ jobs:
         id: metadata
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository_owner }}/llm
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           tags: |
             type=ref,event=branch,suffix=-linux-${{ matrix.arch }}
             type=ref,event=tag,suffix=-linux-${{ matrix.arch }}
@@ -64,7 +68,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: docker/Dockerfile
+          file: docker/Dockerfile.${{ matrix.image }}
           platforms: linux/${{ matrix.arch }}
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
@@ -74,7 +78,8 @@ jobs:
             ARCH=${{ matrix.arch }}
             SOURCE=${{ github.server_url }}/${{ github.repository }}
           # The web UI's @mutablelogic packages are installed from GitHub
-          # Packages, with the workflow's token
+          # Packages, with the workflow's token, of the llm image, which the
+          # webhook image doesn't use
           secrets: |
             github_token=${{ secrets.GITHUB_TOKEN }}
           # The layers are cached for each architecture, including the
@@ -83,13 +88,17 @@ jobs:
           # Actions, whose caches are only shared with the branch or tag
           # they're made on, and each release has its own tag. The cache is a
           # package of its own, so its tags aren't the image's.
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/llm-buildcache:linux-${{ matrix.arch }}
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/llm-buildcache:linux-${{ matrix.arch }},mode=max,image-manifest=true,oci-mediatypes=true
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}-buildcache:linux-${{ matrix.arch }}
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}-buildcache:linux-${{ matrix.arch }},mode=max,image-manifest=true,oci-mediatypes=true
 
   manifest:
-    name: Publish multi-platform latest tag
+    name: Publish ${{ matrix.image }} multi-platform latest tag
     needs: [linux]
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [llm, webhook]
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -105,12 +114,13 @@ jobs:
         shell: bash
         env:
           IMAGE_OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ matrix.image }}
           REF_NAME: ${{ github.ref_name }}
         # The ref's tag replaces each run of characters a tag can't have with
         # a hyphen, as metadata-action does for the images' tags
         run: |
           shopt -s extglob
-          image="ghcr.io/${IMAGE_OWNER,,}/llm"
+          image="ghcr.io/${IMAGE_OWNER,,}/${IMAGE_NAME}"
           ref_tag="${REF_NAME//+([^A-Za-z0-9_.-])/-}"
           docker buildx imagetools create \
             --tag "$image:latest" \
