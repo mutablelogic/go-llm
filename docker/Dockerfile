@@ -50,11 +50,12 @@ RUN /usr/local/bin/llm --version
 LABEL org.opencontainers.image.source=${SOURCE}
 
 # The server keeps its providers, sessions, agents and memory in /data,
-# which is its cache directory, and listens on every interface. The
-# entrypoint adds the providers of a new installation: Eliza, unless NO_ELIZA
-# is set, and those whose variables are set, such as OLLAMA_ADDR, or
+# which is its cache directory, and its defaults there too, which is its
+# data directory, as the llm user has no home directory, for ~/.local/share.
+# The entrypoint adds the providers of a new installation: Eliza, unless
+# NO_ELIZA is set, and those whose variables are set, such as OLLAMA_ADDR, or
 # OPENAI_API_KEY.
-ENV XDG_CACHE_HOME=/data
+ENV XDG_CACHE_HOME=/data XDG_DATA_HOME=/data
 
 # The server listens on every interface in the container, as it must for
 # Docker to forward a published port to it. Which interfaces of the host
