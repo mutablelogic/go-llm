@@ -66,7 +66,8 @@ func (r *Registry) RunEvent(ctx context.Context, id uuid.UUID, req schema.RunEve
 func (r *Registry) runEvent(ctx context.Context, id uuid.UUID, req schema.RunEventRequest, stream llm.GeneratorStreamFn, scheduled uuid.UUID) (_ *schema.RunEventResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.RunEvent",
 		attribute.String("arg.id", id.String()),
-		attribute.String("arg.req", types.Stringify(req)),
+		attribute.String("arg.req", types.Stringify(tracedRunEvent(req))),
+		attribute.Int("arg.req.input", len(req.Input)),
 	)
 	defer func() { endSpan(err) }()
 
