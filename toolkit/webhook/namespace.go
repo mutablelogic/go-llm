@@ -82,7 +82,7 @@ func New(endpoint string, opts ...client.ClientOpt) (*Namespace, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Namespace{client: c, tools: []llm.Tool{&create{client: c}, &list{client: c}, &get{client: c}, &remove{client: c}, &test{client: c}}}, nil
+	return &Namespace{client: c, tools: []llm.Tool{&create{client: c}, &update{client: c}, &list{client: c}, &get{client: c}, &remove{client: c}, &test{client: c}}}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

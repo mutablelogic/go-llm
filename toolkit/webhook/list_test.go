@@ -66,7 +66,7 @@ func Test_List(t *testing.T) {
 	assert.Contains(t, result.Calls[0].Error, "X-Hub-Signature-256")
 	assert.Equal(t, "issues.opened", result.Calls[1].Event)
 	assert.Equal(t, "accepted", result.Calls[1].Status)
-	assert.Empty(t, result.Calls[0].Signature)
+	assert.Equal(t, "failed", result.Calls[0].Signature)
 	assert.Equal(t, "not_checked", result.Calls[1].Signature)
 	assert.True(t, result.Webhooks[0].HasSecret)
 	assert.False(t, result.Webhooks[1].HasSecret)
@@ -126,6 +126,19 @@ func Test_List(t *testing.T) {
 	assert.Equal(t, []uint64{34, 33}, ids(result.Calls))
 	_, _, err = call(ctx, `{"call_limit":21}`)
 	assert.Error(t, err)
+
+	// One which was refused, though its signature wasn't checked, as it isn't
+	// GitHub's, and though it was verified
+	s.call(t, a, "not GitHub's")
+	result, _, err = call(ctx, `{"call_status":"refused","call_limit":1}`)
+	require.NoError(t, err)
+	assert.Equal(t, "not_checked", result.Calls[0].Signature)
+	assert.Contains(t, result.Calls[0].Error, "X-GitHub-Event")
+	_, err = s.store.CreateCall(t.Context(), schema.Call{Webhook: signed.ID, Method: "POST", Verified: true, Error: llm.ErrBadParameter.With("not JSON").Error()})
+	require.NoError(t, err)
+	result, _, err = call(ctx, `{"call_status":"refused","call_limit":1}`)
+	require.NoError(t, err)
+	assert.Equal(t, "verified", result.Calls[0].Signature)
 
 	// One whose signature was verified
 	_, err = s.store.CreateCall(t.Context(), schema.Call{Webhook: signed.ID, Method: "POST", Verified: true})

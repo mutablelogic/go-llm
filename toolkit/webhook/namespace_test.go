@@ -175,7 +175,7 @@ func Test_Namespace(t *testing.T) {
 	require.NoError(t, tk.Add(ns))
 	assert.Equal(t, "webhook", ns.Name())
 	assert.NotEmpty(t, ns.Description())
-	require.Len(t, ns.Tools(), 5)
+	require.Len(t, ns.Tools(), 6)
 	assert.Same(t, ns.Tools()[0], ns.Tools()[0], "the same values, so a toolkit can tell which changed")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

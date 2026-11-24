@@ -29,7 +29,7 @@ var _ llm.Tool = (*create)(nil)
 type createInput struct {
 	Description string `json:"description" help:"What the webhook is for, in a few words, which says which service calls it, and when, such as GitHub: issues opened on go-llm"`
 	Type        string `json:"type,omitempty" enum:"aftership,generic,github,pidgeon" help:"The service which calls it, which says how its calls are verified, and what they are: aftership, github or pidgeon, or generic, for any other, which it is without one" optional:""`
-	Secret      string `json:"secret,omitempty" help:"The secret which the service signs its calls with, which is optional. The service needs the same one, so give it when you register the URL, or else use the one which the service gave. Without one, the webhook works, but its calls' signatures aren't checked." optional:""`
+	Secret      string `json:"secret,omitempty" help:"The secret which the service signs its calls with, which is optional. The service needs the same one, so give it when you register the URL. When the service gives its own once the URL is registered, set it then, with webhook:update. Without one, the webhook works, but its calls' signatures aren't checked." optional:""`
 }
 
 // createOutput is the webhook which was created, as a model is told it
@@ -72,16 +72,12 @@ func (t *create) Run(ctx context.Context, input json.RawMessage) (any, error) {
 
 	// The token is only returned now, in its URL, when it has one
 	result := createOutput{webhookOutput: newWebhookOutput(webhook.Webhook), URL: webhook.URL}
-	notes := []string{"Register the URL with the service now, as it is, as it can't be seen again. Don't give it to the person."}
+	notes := []string{"Register the URL with the service now, as it is, as it can't be seen again. Don't give it to the person, or call it, or fetch it: webhook:test makes a test call."}
 	if webhook.URL == "" {
 		result.Token = webhook.Token
 		notes = []string{"The webhook server has no public address, so a service on the internet can't call it. Its URL is the server's, then /hook/, and the token, which can't be seen again. Don't give it to the person."}
 	}
-	if webhook.HasSecret {
-		notes = append(notes, "Its calls are refused unless they're signed with the secret, so register the same one with the service.")
-	} else {
-		notes = append(notes, "It has no secret, so its calls' signatures aren't checked.")
-	}
+	notes = append(notes, secretNote(webhook.HasSecret))
 	notes = append(notes, "Its calls are kept, but don't come to this conversation yet.")
 	result.Note = strings.Join(notes, " ")
 	return result, nil
