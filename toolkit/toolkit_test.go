@@ -196,7 +196,7 @@ func TestClientOpts(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, tk.ClientOpts())
 
-	tk, err = toolkit.New(ctx, toolkit.WithClientOpts(client.OptTrace(nil, false)))
+	tk, err = toolkit.New(ctx, toolkit.WithClientOpts(client.OptUserAgent("test")))
 	require.NoError(t, err)
 	assert.Len(t, tk.ClientOpts(), 1)
 }

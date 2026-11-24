@@ -141,7 +141,7 @@ func WithTransport(fn TransportFunc) Opt {
 }
 
 // WithClientOpts are options of go-client, such as client.OptHeader,
-// client.OptUserAgent, client.OptReqToken, or client.OptTrace, which
+// client.OptUserAgent, client.OptReqToken, or client.OptTracer, which
 // apply to the client's requests, and so to those of the MCP SDK. Its
 // timeout, with client.OptTimeout, applies to its own requests, but not
 // to an MCP session's, whose streams last as long as the session, and are
