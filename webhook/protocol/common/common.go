@@ -5,8 +5,10 @@ package common
 import (
 	"bytes"
 	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
+	"maps"
 	"mime"
 	"net/http"
 	"net/url"
@@ -71,6 +73,27 @@ func Equal(signature, expected []byte) bool {
 // are equal, in constant time
 func EqualString(a, b string) bool {
 	return len(a) > 0 && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// HMAC returns the HMAC-SHA256, with the secret, of the data
+func HMAC(secret string, data ...[]byte) []byte {
+	mac := hmac.New(sha256.New, []byte(secret))
+	for _, data := range data {
+		mac.Write(data)
+	}
+	return mac.Sum(nil)
+}
+
+// Sample returns the headers, and the body, of a sample call, which says
+// it's one, with the fields
+func Sample(fields map[string]any) (http.Header, []byte) {
+	values := map[string]any{"test": true, "message": "This is a test call, which no service sent"}
+	maps.Copy(values, fields)
+	body, err := json.Marshal(values)
+	if err != nil {
+		body = []byte("{}")
+	}
+	return http.Header{"Content-Type": {"application/json"}}, body
 }
 
 // NoSecret is the error of verifying a call of a webhook with no secret

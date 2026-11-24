@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"net/url"
+	"path/filepath"
 	"testing"
 	"time"
 	"uuid"
@@ -15,6 +16,7 @@ import (
 	store "github.com/mutablelogic/go-llm/webhook/store/sqlite"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	sqlite "github.com/mutablelogic/go-sqlite"
+	ncruces "github.com/mutablelogic/go-sqlite/ncruces"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -176,12 +178,35 @@ func Test_Store_Calls(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, uint(2), list.Count)
 	assert.Equal(t, []uint64{two.ID}, callIDs(list.Body))
+	list, err = s.ListCalls(ctx, webhook.CallListRequest{After: one.ID, Newest: true})
+	require.NoError(t, err)
+	assert.Equal(t, uint(2), list.Count)
+	assert.Equal(t, []uint64{three.ID, two.ID}, callIDs(list.Body))
+	list, err = s.ListCalls(ctx, webhook.CallListRequest{Session: session.String(), Newest: true, Limit: types.Ptr(uint64(1))})
+	require.NoError(t, err)
+	assert.Equal(t, uint(2), list.Count)
+	assert.Equal(t, []uint64{two.ID}, callIDs(list.Body))
 	list, err = s.ListCalls(ctx, webhook.CallListRequest{Webhook: b.ID})
 	require.NoError(t, err)
 	assert.Equal(t, []uint64{three.ID}, callIDs(list.Body))
 	list, err = s.ListCalls(ctx, webhook.CallListRequest{Session: session.String()})
 	require.NoError(t, err)
 	assert.Equal(t, []uint64{one.ID, two.ID}, callIDs(list.Body))
+
+	// Received since a time, to the second, whatever the decimals of either
+	second := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	var since []uint64
+	for _, offset := range []time.Duration{-time.Nanosecond, 0, 500 * time.Millisecond, 550 * time.Millisecond, time.Second} {
+		c, err := s.CreateCall(ctx, webhook.Call{Webhook: b.ID, Method: "POST", Received: second.Add(offset)})
+		require.NoError(t, err)
+		since = append(since, c.ID)
+	}
+	for _, at := range []time.Time{second, second.Add(520 * time.Millisecond), second.In(time.FixedZone("", 3600))} {
+		list, err = s.ListCalls(ctx, webhook.CallListRequest{Webhook: b.ID, Since: at})
+		require.NoError(t, err)
+		assert.Equal(t, uint(4), list.Count)
+		assert.Equal(t, since[1:], callIDs(list.Body))
+	}
 
 	// A call which was refused is kept, but isn't a delivery which is sent
 	// again, and is listed by its status
@@ -201,6 +226,17 @@ func Test_Store_Calls(t *testing.T) {
 	assert.Equal(t, []uint64{refused.ID, accepted.ID}, callIDs(list.Body))
 	_, err = s.ListCalls(ctx, webhook.CallListRequest{Status: "pending"})
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
+
+	// Deleted, so its delivery is kept again
+	deleted, err := s.DeleteCall(ctx, accepted.ID)
+	require.NoError(t, err)
+	assert.Equal(t, accepted, deleted)
+	_, err = s.DeleteCall(ctx, accepted.ID)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = s.GetCall(ctx, accepted.ID)
+	assert.ErrorIs(t, err, llm.ErrNotFound)
+	_, err = s.CreateCall(ctx, webhook.Call{Webhook: a.ID, Method: "POST", Delivery: "d2"})
+	require.NoError(t, err)
 
 	// Deleted, before a time, and with their webhook
 	n, err := s.DeleteCalls(ctx, time.Now().Add(-time.Hour))
@@ -261,4 +297,47 @@ func Test_Store_SecretsNotTraced(t *testing.T) {
 	}
 	assert.Contains(t, names, "webhook.store.sqlite.CreateWebhook")
 	assert.Contains(t, names, "webhook.store.sqlite.CreateCall")
+}
+
+func Test_Store_Upgrade(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "webhook.db")
+	s, err := store.New(ctx, path)
+	require.NoError(t, err)
+	a, err := s.CreateWebhook(ctx, webhook.WebhookMeta{Session: uuid.New(), Description: "GitHub"}, hash("a"))
+	require.NoError(t, err)
+	call, err := s.CreateCall(ctx, webhook.Call{Webhook: a.ID, Method: "POST", Event: "push"})
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	// A database of version 1, which has no test calls
+	pool, err := ncruces.Open(ctx, path)
+	require.NoError(t, err)
+	require.NoError(t, pool.Exec(ctx, "ALTER TABLE call DROP COLUMN test"))
+	require.NoError(t, sqlite.SetVersion(ctx, pool, 1))
+	require.NoError(t, pool.Close())
+
+	// It's upgraded, once, with the calls it has, which aren't tests
+	for range 2 {
+		s, err = store.New(ctx, path)
+		require.NoError(t, err)
+		got, err := s.GetCall(ctx, call.ID)
+		require.NoError(t, err)
+		assert.Equal(t, call, got)
+		test, err := s.CreateCall(ctx, webhook.Call{Webhook: a.ID, Method: "POST", Test: true})
+		require.NoError(t, err)
+		assert.True(t, test.Test)
+		list, err := s.ListCalls(ctx, webhook.CallListRequest{Newest: true, Limit: types.Ptr(uint64(1))})
+		require.NoError(t, err)
+		assert.Equal(t, []webhook.Call{test}, list.Body)
+		require.NoError(t, s.Close())
+	}
+
+	// One which is newer is an error
+	pool, err = ncruces.Open(ctx, path)
+	require.NoError(t, err)
+	require.NoError(t, sqlite.SetVersion(ctx, pool, 99))
+	require.NoError(t, pool.Close())
+	_, err = store.New(ctx, path)
+	assert.ErrorIs(t, err, llm.ErrNotImplemented)
 }

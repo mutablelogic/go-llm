@@ -119,11 +119,26 @@ func (c *Client) DeleteWebhook(ctx context.Context, id uint64) (*schema.Webhook,
 ///////////////////////////////////////////////////////////////////////////////
 // CALLS
 
-// ListCalls returns the calls, oldest first, as the request selects, after
-// the call with its serial number, and how many there are after it
+// ListCalls returns the calls, oldest first, or newest, as the request
+// selects, after the call with its serial number, and since its time, and
+// how many there are
 func (c *Client) ListCalls(ctx context.Context, req schema.CallListRequest) (*schema.CallList, error) {
 	var response schema.CallList
 	if err := c.DoWithContext(ctx, client.NewRequestEx(http.MethodGet, types.ContentTypeJSON), &response, client.OptPath(webhookPath, callPath), client.OptQuery(req.Query())); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+// TestCall makes a test call to the webhook, signed as the request says, and
+// returns it, as it was kept, whether it was accepted, or refused
+func (c *Client) TestCall(ctx context.Context, test schema.TestRequest) (*schema.Call, error) {
+	req, err := client.NewJSONRequestEx(http.MethodPost, test, types.ContentTypeJSON)
+	if err != nil {
+		return nil, err
+	}
+	var response schema.Call
+	if err := c.DoWithContext(ctx, req, &response, client.OptPath(webhookPath, callPath)); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -133,6 +148,16 @@ func (c *Client) ListCalls(ctx context.Context, req schema.CallListRequest) (*sc
 func (c *Client) GetCall(ctx context.Context, id uint64) (*schema.Call, error) {
 	var response schema.Call
 	if err := c.DoWithContext(ctx, client.NewRequestEx(http.MethodGet, types.ContentTypeJSON), &response, client.OptPath(webhookPath, callPath, id)); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+// DeleteCall deletes the call with the serial number, and returns it, as it
+// was
+func (c *Client) DeleteCall(ctx context.Context, id uint64) (*schema.Call, error) {
+	var response schema.Call
+	if err := c.DoWithContext(ctx, client.NewRequestEx(http.MethodDelete, types.ContentTypeJSON), &response, client.OptPath(webhookPath, callPath, id)); err != nil {
 		return nil, err
 	}
 	return &response, nil

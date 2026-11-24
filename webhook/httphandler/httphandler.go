@@ -207,8 +207,27 @@ func callsHandler(r *registry.Registry, router *httprouter.Router, documentation
 			op.Summary("List Calls")
 			op.Description(documentation.Section(3, "GET /webhook/call").Body)
 			op.Query(jsonschema.MustFor[schema.CallListRequest]())
-			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.CallList](), "The calls, oldest first, and how many there are after the call")
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.CallList](), "The calls, oldest first, or newest, and how many there are after the call")
 			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a status which isn't accepted, or refused")
+		})
+
+		// POST
+		path.Post(func(w http.ResponseWriter, req *http.Request) {
+			var test schema.TestRequest
+			if err := httprequest.Read(req, &test); err != nil {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
+			} else if call, err := r.TestCall(req.Context(), test); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err))
+			} else {
+				httpresponse.JSON(w, http.StatusCreated, httprequest.Indent(req), call)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("Test Webhook")
+			op.Description(documentation.Section(3, "POST /webhook/call").Body)
+			op.RequestBody(jsonschema.MustFor[schema.TestRequest]())
+			op.JSONResponse(http.StatusCreated, jsonschema.MustFor[schema.Call](), "The test call, which was accepted, or refused")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a good signature, of a webhook which has no secret")
+			op.ErrorResponse(http.StatusNotFound, "Webhook not found")
 		})
 	})
 }
@@ -231,6 +250,23 @@ func callHandler(r *registry.Registry, router *httprouter.Router, documentation 
 			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a serial number which isn't one")
 			op.Description(documentation.Section(3, "GET /webhook/call/{id}").Body)
 			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Call](), "The call")
+			op.ErrorResponse(http.StatusNotFound, "Call not found")
+		})
+
+		// DELETE
+		path.Delete(func(w http.ResponseWriter, req *http.Request) {
+			if id, err := parseSerial(req, "call"); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err))
+			} else if call, err := r.DeleteCall(req.Context(), id); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err))
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(req), call)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("Delete Call")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a serial number which isn't one")
+			op.Description(documentation.Section(3, "DELETE /webhook/call/{id}").Body)
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.Call](), "The call, as it was")
 			op.ErrorResponse(http.StatusNotFound, "Call not found")
 		})
 	})

@@ -13,7 +13,7 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// CallID selects a call, by its serial number, which is got
+// CallID selects a call, by its serial number, which is got, or deleted
 type CallID uint64
 
 // CallInsert is a call which is created
@@ -22,8 +22,8 @@ type CallInsert webhook.Call
 // CallListRequest selects the calls which are listed
 type CallListRequest webhook.CallListRequest
 
-// CallList is the calls which are read, of a list, or one, of a get, or a
-// create
+// CallList is the calls which are read, of a list, or one, of a get, a
+// create, or a delete
 type CallList webhook.CallList
 
 // CallsBefore selects the calls received before the time, which are
@@ -41,6 +41,8 @@ func (id CallID) Select(bind *sqlite.Bind, op sqlite.Op) (string, error) {
 	switch op {
 	case sqlite.Get:
 		return bind.Query("call.get"), nil
+	case sqlite.Delete:
+		return bind.Query("call.delete"), nil
 	}
 	return "", sqlite.ErrNotImplemented.Withf("call: %v", op)
 }
@@ -63,6 +65,11 @@ func (req CallListRequest) Select(bind *sqlite.Bind, op sqlite.Op) (string, erro
 		return "", llm.ErrBadParameter.Withf("call status %q isn't %s, or %s", req.Status, webhook.CallAccepted, webhook.CallRefused)
 	}
 	bind.Set("status", status)
+	bind.Set("since", sinceOf(req.Since))
+	bind.Set("order", "ASC")
+	if req.Newest {
+		bind.Set("order", "DESC")
+	}
 	limit := sqlite.OffsetLimit{Limit: req.Limit}
 	limit.Bind(bind, ListLimit)
 	return bind.Query("call.list"), nil
@@ -101,6 +108,7 @@ func (c CallInsert) Insert(bind *sqlite.Bind) (string, error) {
 	bind.Set("event", c.Event)
 	bind.Set("delivery", c.Delivery)
 	bind.Set("verified", c.Verified)
+	bind.Set("test", c.Test)
 	bind.Set("error", c.Error)
 	bind.Set("body", nilIfEmpty(len(c.Body) == 0, c.Body))
 	return bind.Query("call.create"), nil
@@ -115,7 +123,7 @@ func (CallInsert) Update(*sqlite.Bind) error {
 
 func (list *CallList) Scan(row sqlite.Row) error {
 	var c webhook.Call
-	if err := row.Scan(&c.ID, &c.Webhook, &c.Received, &c.Method, &c.Query, &c.Headers, &c.Values, &c.Event, &c.Delivery, &c.Verified, &c.Error, &c.Body); err != nil {
+	if err := row.Scan(&c.ID, &c.Webhook, &c.Received, &c.Method, &c.Query, &c.Headers, &c.Values, &c.Event, &c.Delivery, &c.Verified, &c.Test, &c.Error, &c.Body); err != nil {
 		return err
 	}
 	list.Body = append(list.Body, c)
@@ -134,6 +142,18 @@ func (count *CallCount) Scan(sqlite.Row) error {
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// sinceOf returns the time, to the second, which the times which are stored,
+// in that second, or after, sort after, or the same as, or empty, which every
+// time sorts after, when it's zero. They're stored with as many decimals as
+// they have, so a time with a fraction, or a time zone, doesn't sort as it
+// should against one which has fewer.
+func sinceOf(since time.Time) string {
+	if since.IsZero() {
+		return ""
+	}
+	return since.UTC().Format("2006-01-02T15:04:05")
+}
 
 // nilIfEmpty returns nil, which is NULL, when it's empty, or the value
 func nilIfEmpty(empty bool, value any) any {

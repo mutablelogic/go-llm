@@ -24,6 +24,12 @@ func Test_GitHub(t *testing.T) {
 	assert.ErrorIs(t, p.Verify(http.Header{}, body, secret), llm.ErrForbidden)
 	assert.ErrorIs(t, p.Verify(signed, body, ""), llm.ErrForbidden)
 
+	// A POST, with its event, as GitHub's are
+	event := http.Header{"X-Github-Event": {"ping"}}
+	assert.NoError(t, p.Check(http.MethodPost, event))
+	assert.ErrorIs(t, p.Check(http.MethodGet, event), llm.ErrBadParameter)
+	assert.ErrorIs(t, p.Check(http.MethodPost, http.Header{}), llm.ErrBadParameter)
+
 	// A form's payload is the JSON
 	values, err := p.Decode(http.Header{"Content-Type": {"application/x-www-form-urlencoded"}}, []byte(`payload=%7B%22action%22%3A%22opened%22%7D`))
 	require.NoError(t, err)
@@ -33,10 +39,10 @@ func Test_GitHub(t *testing.T) {
 	h := http.Header{}
 	h.Set("X-GitHub-Event", "issues")
 	h.Set("X-GitHub-Delivery", "72d3162e")
-	event, delivery := p.Identify(h, values)
-	assert.Equal(t, "issues.opened", event)
+	what, delivery := p.Identify(h, values)
+	assert.Equal(t, "issues.opened", what)
 	assert.Equal(t, "72d3162e", delivery)
 	h.Set("X-GitHub-Event", "push")
-	event, _ = p.Identify(h, []byte(`{"ref":"main"}`))
-	assert.Equal(t, "push", event)
+	what, _ = p.Identify(h, []byte(`{"ref":"main"}`))
+	assert.Equal(t, "push", what)
 }

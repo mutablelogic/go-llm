@@ -17,11 +17,17 @@ import (
 
 const (
 	// Version is the version of the schema, of the database's user_version
-	Version = 1
+	Version = 2
 
 	// ListLimit is the most rows which are listed at once
 	ListLimit = 100
 )
+
+// upgrades are the statements which upgrade a schema, from each version to
+// the next, such as from version 1, to 2
+var upgrades = map[int64][]string{
+	1: {"ALTER TABLE call ADD COLUMN test BOOLEAN NOT NULL DEFAULT 0"},
+}
 
 var (
 	//go:embed objects.sql
@@ -35,7 +41,8 @@ var (
 // PUBLIC FUNCTIONS
 
 // Create creates the schema, in a transaction, when the database hasn't
-// one, and sets its version. A database whose schema is newer is an error.
+// one, or upgrades it, when it's older, and sets its version. A database
+// whose schema is newer is an error.
 func Create(ctx context.Context, conn sqlite.Conn) error {
 	objects, err := sqlite.NewQueries(strings.NewReader(objects))
 	if err != nil {
@@ -50,6 +57,9 @@ func Create(ctx context.Context, conn sqlite.Conn) error {
 		} else if version == Version {
 			return nil
 		}
+		if version > 0 {
+			return upgrade(ctx, conn, version)
+		}
 		for _, key := range objects.Keys() {
 			if err := conn.With(sqlite.TraceSpanNameArg, key).Exec(ctx, objects.Query(key)); err != nil {
 				return err
@@ -63,4 +73,19 @@ func Create(ctx context.Context, conn sqlite.Conn) error {
 // WithQueries, so the types' selectors and writers use them
 func NewQueries() (*sqlite.Queries, error) {
 	return sqlite.NewQueries(strings.NewReader(queries))
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// upgrade upgrades the schema, from the version, to the current one
+func upgrade(ctx context.Context, conn sqlite.Conn, version int64) error {
+	for ; version < Version; version++ {
+		for _, statement := range upgrades[version] {
+			if err := conn.With(sqlite.TraceSpanNameArg, "schema.upgrade").Exec(ctx, statement); err != nil {
+				return err
+			}
+		}
+	}
+	return sqlite.SetVersion(ctx, conn, Version)
 }

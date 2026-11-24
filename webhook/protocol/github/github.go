@@ -7,8 +7,6 @@
 package github
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -56,6 +54,18 @@ func (Protocol) Headers() []string {
 
 func (Protocol) Handshake(*http.Request, string) ([]byte, bool) { return nil, false }
 
+// Check returns nil when the call is a POST, with its event in
+// X-GitHub-Event, as every call of GitHub's is
+func (Protocol) Check(method string, header http.Header) error {
+	if method != http.MethodPost {
+		return llm.ErrBadParameter.Withf("the call is a %s, and GitHub's are a POST", method)
+	}
+	if header.Get(headerEvent) == "" {
+		return llm.ErrBadParameter.Withf("the call has no %s, which GitHub's have", headerEvent)
+	}
+	return nil
+}
+
 // Decode returns the body, or, when it's a form, its payload field, which is
 // the JSON
 func (Protocol) Decode(header http.Header, body []byte) (json.RawMessage, error) {
@@ -88,12 +98,23 @@ func (Protocol) Verify(header http.Header, body []byte, secret string) error {
 	if err != nil {
 		return llm.ErrForbidden.Withf("the call's %s isn't hex", headerSignature)
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	if !common.Equal(got, mac.Sum(nil)) {
+	if !common.Equal(got, common.HMAC(secret, body)) {
 		return llm.ErrForbidden.Withf("the call's %s isn't the body's, with the webhook's secret", headerSignature)
 	}
 	return nil
+}
+
+// Sample returns a ping, which GitHub sends when a webhook is set up
+func (Protocol) Sample(delivery string) (http.Header, []byte) {
+	header, body := common.Sample(nil)
+	header.Set(headerEvent, "ping")
+	header.Set(headerDelivery, delivery)
+	return header, body
+}
+
+// Sign sets X-Hub-Signature-256
+func (Protocol) Sign(header http.Header, body []byte, secret string) {
+	header.Set(headerSignature, "sha256="+hex.EncodeToString(common.HMAC(secret, body)))
 }
 
 // Identify returns X-GitHub-Event, and the body's action, when it has one,

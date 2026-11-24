@@ -13,6 +13,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	protocol "github.com/mutablelogic/go-llm/webhook/protocol"
 	registry "github.com/mutablelogic/go-llm/webhook/registry"
 	schema "github.com/mutablelogic/go-llm/webhook/schema"
 	store "github.com/mutablelogic/go-llm/webhook/store/sqlite"
@@ -145,6 +146,98 @@ func Test_Registry_CallWithoutSecret(t *testing.T) {
 	require.Len(t, list.Body, 1)
 	assert.Contains(t, list.Body[0].Error, "JSON")
 	assert.Equal(t, "{", string(list.Body[0].Body))
+}
+
+func Test_Registry_CallCheck(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRegistry(t)
+	hook, err := r.CreateWebhook(ctx, schema.WebhookMeta{Session: uuid.New(), Description: "GitHub", Type: "github"})
+	require.NoError(t, err)
+
+	// Without a secret, GitHub's calls are accepted, but not others, such as
+	// a GET, or one without its event, which are kept, with why
+	_, err = r.Call(ctx, hook.Token, githubRequest("{}", "", "d1"))
+	require.NoError(t, err)
+	_, err = r.Call(ctx, hook.Token, httptest.NewRequest(http.MethodGet, "/", nil))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	req := githubRequest("{}", "", "d2")
+	req.Header.Del("X-GitHub-Event")
+	_, err = r.Call(ctx, hook.Token, req)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	list, err := r.ListCalls(ctx, schema.CallListRequest{Webhook: hook.ID})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 3)
+	assert.Empty(t, list.Body[0].Error)
+	assert.Contains(t, list.Body[1].Error, "GET")
+	assert.Contains(t, list.Body[2].Error, "X-GitHub-Event")
+
+	// One which is signed, but isn't GitHub's, is refused too, as verified
+	signed, err := r.CreateWebhook(ctx, schema.WebhookMeta{Session: uuid.New(), Description: "GitHub", Type: "github", Secret: "s3cret"})
+	require.NoError(t, err)
+	req = githubRequest("{}", "s3cret", "d3")
+	req.Header.Del("X-GitHub-Event")
+	_, err = r.Call(ctx, signed.Token, req)
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	list, err = r.ListCalls(ctx, schema.CallListRequest{Webhook: signed.ID})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 1)
+	assert.True(t, list.Body[0].Verified)
+}
+
+func Test_Registry_TestCall(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRegistry(t)
+	for _, name := range protocol.Names() {
+		signed, err := r.CreateWebhook(ctx, schema.WebhookMeta{Session: uuid.New(), Description: name, Type: name, Secret: "s3cret"})
+		require.NoError(t, err)
+		unsigned, err := r.CreateWebhook(ctx, schema.WebhookMeta{Session: uuid.New(), Description: name, Type: name})
+		require.NoError(t, err)
+
+		// With a secret, only a good signature is accepted, and verified, and
+		// one which is refused is returned too. Without a secret, they're
+		// accepted, but not verified, and can't be good.
+		for _, test := range []struct {
+			webhook            uint64
+			signature          string
+			accepted, verified bool
+		}{
+			{signed.ID, "", true, true},
+			{signed.ID, "good", true, true},
+			{signed.ID, "bad", false, false},
+			{signed.ID, "none", false, false},
+			{unsigned.ID, "", true, false},
+			{unsigned.ID, "bad", true, false},
+			{unsigned.ID, "none", true, false},
+		} {
+			call, err := r.TestCall(ctx, schema.TestRequest{Webhook: test.webhook, Signature: test.signature})
+			require.NoError(t, err, "%s %+v", name, test)
+			assert.NotZero(t, call.ID)
+			assert.True(t, call.Test)
+			assert.Equal(t, test.accepted, call.Error == "", "%s %+v: %s", name, test, call.Error)
+			assert.Equal(t, test.verified, call.Verified, "%s %+v", name, test)
+			got, err := r.GetCall(ctx, call.ID)
+			require.NoError(t, err)
+			assert.Equal(t, call, got)
+		}
+		_, err = r.TestCall(ctx, schema.TestRequest{Webhook: unsigned.ID, Signature: "good"})
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		_, err = r.TestCall(ctx, schema.TestRequest{Webhook: signed.ID, Signature: "other"})
+		assert.ErrorIs(t, err, llm.ErrBadParameter)
+		list, err := r.ListCalls(ctx, schema.CallListRequest{Webhook: signed.ID})
+		require.NoError(t, err)
+		assert.Equal(t, uint(4), list.Count)
+	}
+
+	// A service's call isn't a test, whatever it says it is
+	hook, err := r.CreateWebhook(ctx, schema.WebhookMeta{Session: uuid.New(), Description: "GitHub", Type: "github", Secret: "s3cret"})
+	require.NoError(t, err)
+	received, err := r.Call(ctx, hook.Token, githubRequest(`{"test":true}`, "s3cret", "d1"))
+	require.NoError(t, err)
+	assert.False(t, received.Call.Test)
+
+	// Not of a webhook which there isn't
+	_, err = r.TestCall(ctx, schema.TestRequest{Webhook: 999})
+	assert.ErrorIs(t, err, llm.ErrNotFound)
 }
 
 func Test_Registry_CallMaxBody(t *testing.T) {
