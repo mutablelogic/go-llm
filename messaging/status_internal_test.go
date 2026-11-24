@@ -21,7 +21,7 @@ type editor struct {
 }
 
 func (*editor) Name() string                                                        { return "fake" }
-func (*editor) Link(string) string                                                  { return "" }
+func (*editor) Link(context.Context, string) (string, error)                        { return "", nil }
 func (*editor) Receive(context.Context, func(context.Context, Message) error) error { return nil }
 
 func (e *editor) Send(_ context.Context, _, text string) ([]Sent, error) {

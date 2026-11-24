@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 	"uuid"
@@ -20,13 +21,18 @@ type Provider interface {
 
 	// Link returns the link which the person opens to connect a chat, with
 	// the code, which the provider's message from that chat then has, such
-	// as https://t.me/bot?start=code
-	Link(code string) string
+	// as https://t.me/bot?start=code, or why it can't, such as that the
+	// provider can't be reached
+	Link(ctx context.Context, code string) (string, error)
 
 	// Receive calls the function with each message sent to the provider,
 	// one at a time, in the order they're sent, until the context is
 	// cancelled, when it returns nil, or it can't go on. A message the
-	// function returns an error for isn't received again.
+	// function returns an error for isn't received again. It's called
+	// again, after a while, when it can't go on, unless its error is
+	// ErrForbidden, such as for a token which isn't the provider's, and
+	// after as long as its error says, at least, when it has a RetryAfter
+	// method, such as when it's rate limited.
 	Receive(ctx context.Context, fn func(context.Context, Message) error) error
 
 	// Send sends the text to the chat with the address, as more than one
@@ -34,6 +40,17 @@ type Provider interface {
 	// was sent as, in order, including those which were sent before an
 	// error
 	Send(ctx context.Context, address, text string) ([]Sent, error)
+}
+
+// RetryAfter returns how long to wait before trying again, which the error,
+// such as a provider's which is rate limited, says, with its RetryAfter
+// method, or zero, when it doesn't say
+func RetryAfter(err error) time.Duration {
+	var r interface{ RetryAfter() time.Duration }
+	if errors.As(err, &r) {
+		return r.RetryAfter()
+	}
+	return 0
 }
 
 // Typer is a provider which can show that a reply is being written, such

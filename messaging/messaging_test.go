@@ -34,6 +34,7 @@ type fake struct {
 	mu       sync.Mutex
 	sent     map[string][]string
 	ids      int
+	linkErr  error // Why it can't make a link, when it can't
 }
 
 func newFake(name string) *fake {
@@ -42,7 +43,12 @@ func newFake(name string) *fake {
 
 func (f *fake) Name() string { return f.name }
 
-func (f *fake) Link(code string) string { return "https://example.com/" + f.name + "?start=" + code }
+func (f *fake) Link(_ context.Context, code string) (string, error) {
+	if f.linkErr != nil {
+		return "", f.linkErr
+	}
+	return "https://example.com/" + f.name + "?start=" + code, nil
+}
 
 // Private chats, of the fake, are those whose addresses don't start with
 // a hyphen, as Telegram's are
@@ -588,4 +594,23 @@ func Test_Messaging_SessionPrompt(t *testing.T) {
 	assert.Contains(t, prompt, "`voice-note`")
 	assert.Contains(t, prompt, "`llm:transcribe`")
 	assert.Empty(t, m.SessionPrompt(ctx, uuid.New()), "another conversation's chats aren't its")
+}
+
+func Test_Messaging_ConnectUnreachable(t *testing.T) {
+	// A provider which can't make a link, such as while it's rate limited,
+	// says why
+	ctx := context.Background()
+	provider := newFake("fake")
+	provider.linkErr = llm.ErrServiceUnavailable.With("Too Many Requests: retry after 32")
+	m, err := messaging.New(messaging.NewStore(), messaging.WithProvider(provider))
+	require.NoError(t, err)
+	_, _, err = m.Connect(ctx, uuid.New(), "")
+	require.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	assert.Contains(t, err.Error(), "retry after 32")
+
+	// Once it can, it does
+	provider.linkErr = nil
+	link, _, err := m.Connect(ctx, uuid.New(), "")
+	require.NoError(t, err)
+	assert.NotEmpty(t, code(t, link))
 }

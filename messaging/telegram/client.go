@@ -17,10 +17,11 @@ import (
 
 // response is the Bot API's response to a method
 type response[T any] struct {
-	OK          bool   `json:"ok"`
-	Result      T      `json:"result"`
-	ErrorCode   int    `json:"error_code,omitempty"`
-	Description string `json:"description,omitempty"`
+	OK          bool                `json:"ok"`
+	Result      T                   `json:"result"`
+	ErrorCode   int                 `json:"error_code,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Parameters  *responseParameters `json:"parameters,omitempty"`
 }
 
 // user is a Telegram user, or bot
@@ -244,34 +245,44 @@ func (t *tokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // upload calls the Bot API's method, with the request, which has a file,
 // as multipart form data, which is read as it's sent, and returns its
-// result, or its error
+// result, or its error, which is an *Error, when it's the Bot API's
 func upload[T any](ctx context.Context, c *client.Client, method string, req any) (T, error) {
 	var result response[T]
 	payload, err := client.NewStreamingMultipartRequest(req, types.ContentTypeJSON)
 	if err != nil {
 		return result.Result, err
 	}
-	if err := c.DoWithContext(ctx, payload, &result, client.OptPath(method), client.OptNoTimeout()); err != nil {
+	if err := c.DoWithContext(ctx, payload, &result, client.OptPath(method), client.OptNoTimeout(), client.OptResponse(decodeError(method))); err != nil {
 		return result.Result, err
 	} else if !result.OK {
-		return result.Result, llm.ErrInternalServerError.Withf("telegram %s: %s", method, result.Description)
+		return result.Result, newError(method, result)
 	}
 	return result.Result, nil
 }
 
 // call calls the Bot API's method, with the request, and returns its result,
-// or its error
+// or its error, which is an *Error, when it's the Bot API's, calling it
+// again, when it's rate limited, after waiting as long as it says, for a
+// while
 func call[T any](ctx context.Context, c *client.Client, method string, req any, opts ...client.RequestOpt) (T, error) {
+	return retry(ctx, func() (T, error) {
+		return callOnce[T](ctx, c, method, req, opts...)
+	})
+}
+
+// callOnce calls the Bot API's method, with the request, once, and returns
+// its result, or its error, which is an *Error, when it's the Bot API's
+func callOnce[T any](ctx context.Context, c *client.Client, method string, req any, opts ...client.RequestOpt) (T, error) {
 	var result response[T]
 	payload, err := client.NewJSONRequest(req)
 	if err != nil {
 		return result.Result, err
 	}
-	opts = append([]client.RequestOpt{client.OptPath(method)}, opts...)
+	opts = append([]client.RequestOpt{client.OptPath(method), client.OptResponse(decodeError(method))}, opts...)
 	if err := c.DoWithContext(ctx, payload, &result, opts...); err != nil {
 		return result.Result, err
 	} else if !result.OK {
-		return result.Result, llm.ErrInternalServerError.Withf("telegram %s: %s", method, result.Description)
+		return result.Result, newError(method, result)
 	}
 	return result.Result, nil
 }

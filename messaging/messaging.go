@@ -216,7 +216,14 @@ func (m *Messaging) Connect(ctx context.Context, session uuid.UUID, provider str
 	}
 	m.codes[code] = pairing{session: session, provider: p.Name(), expires: expires}
 	m.mu.Unlock()
-	return p.Link(code), expires, nil
+	link, err := p.Link(ctx, code)
+	if err != nil {
+		m.mu.Lock()
+		delete(m.codes, code)
+		m.mu.Unlock()
+		return "", time.Time{}, err
+	}
+	return link, expires, nil
 }
 
 // List returns the channels of the session, or all of them, when it's the
@@ -443,7 +450,9 @@ func (m *Messaging) provider(name string) (Provider, error) {
 
 // receive receives the provider's messages, until the context is
 // cancelled, trying again, when it can't, waiting longer each time, until
-// it has received a message
+// it has received a message, and at least as long as its error says, such
+// as when it's rate limited. It stops, when it's forbidden, such as for a
+// token which isn't the provider's.
 func (m *Messaging) receive(ctx context.Context, logger *slog.Logger, provider Provider) {
 	wait := retryMin
 	for {
@@ -457,16 +466,32 @@ func (m *Messaging) receive(ctx context.Context, logger *slog.Logger, provider P
 		})
 		if ctx.Err() != nil {
 			return
+		}
+		delay, ok := retryDelay(wait, err)
+		if !ok {
+			logger.ErrorContext(ctx, "messages not received, and won't be, until the server restarts", "provider", provider.Name(), "error", err.Error())
+			return
 		} else if err != nil {
-			logger.ErrorContext(ctx, "messages not received", "provider", provider.Name(), "retry", wait.String(), "error", err.Error())
+			logger.ErrorContext(ctx, "messages not received", "provider", provider.Name(), "retry", delay.String(), "error", err.Error())
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(wait):
+		case <-time.After(delay):
 		}
 		wait = min(wait*2, retryMax)
 	}
+}
+
+// retryDelay returns how long to wait before receiving again, after the
+// error, which is the wait, or as long as the error says, when it's longer,
+// such as when it's rate limited, and false, when it isn't received again,
+// as it's forbidden, such as for a token which isn't the provider's
+func retryDelay(wait time.Duration, err error) (time.Duration, bool) {
+	if errors.Is(err, llm.ErrForbidden) {
+		return 0, false
+	}
+	return max(wait, RetryAfter(err)), true
 }
 
 // received connects the chat the message was sent in, when it has a code,

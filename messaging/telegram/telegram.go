@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -27,9 +28,12 @@ import (
 
 // Telegram is a Telegram bot, whose chats are channels
 type Telegram struct {
-	client   *client.Client
+	client *client.Client
+	zone   func() *time.Location
+
+	// The bot's username, once it's known
+	mu       sync.Mutex
 	username string
-	zone     func() *time.Location
 
 	// The identifier of the next update, which only Receive changes
 	offset int64
@@ -75,18 +79,17 @@ const (
 // LIFECYCLE
 
 // New returns the bot with the token, from BotFather, with the client
-// options, such as the user agent, or an endpoint for tests, once it's
-// checked the token, and has the bot's username, which its links have
-func New(ctx context.Context, token string, opts ...client.ClientOpt) (*Telegram, error) {
+// options, such as the user agent, or an endpoint for tests. It doesn't
+// call Telegram: the token is checked, and the bot's username, which its
+// links have, is read, once it receives messages, or makes a link, so a bot
+// which Telegram can't be reached for yet, such as while it's rate limited,
+// is still added, and is reached later.
+func New(token string, opts ...client.ClientOpt) (*Telegram, error) {
 	c, err := newClient(token, opts...)
 	if err != nil {
 		return nil, err
 	}
-	me, err := call[user](ctx, c, "getMe", struct{}{})
-	if err != nil {
-		return nil, err
-	}
-	return &Telegram{client: c, username: me.Username}, nil
+	return &Telegram{client: c}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -97,15 +100,39 @@ func (*Telegram) Name() string {
 	return Name
 }
 
-// Username returns the bot's username
+// Username returns the bot's username, once it's known, or empty
 func (t *Telegram) Username() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.username
 }
 
 // Link returns the link which opens a chat with the bot, whose Start
-// button sends it the code
-func (t *Telegram) Link(code string) string {
-	return "https://t.me/" + url.PathEscape(t.username) + "?start=" + url.QueryEscape(code)
+// button sends it the code, or why it can't, such as that Telegram can't
+// be reached, or the token isn't a bot's, when its username isn't known
+func (t *Telegram) Link(ctx context.Context, code string) (string, error) {
+	username, err := t.me(ctx)
+	if err != nil {
+		return "", err
+	}
+	return "https://t.me/" + url.PathEscape(username) + "?start=" + url.QueryEscape(code), nil
+}
+
+// me returns the bot's username, reading it, and so checking the token,
+// when it isn't known yet. It isn't read again, when it's rate limited, so
+// what's waiting for it, such as a link, is told why at once.
+func (t *Telegram) me(ctx context.Context) (string, error) {
+	if username := t.Username(); username != "" {
+		return username, nil
+	}
+	me, err := callOnce[user](ctx, t.client, "getMe", struct{}{})
+	if err != nil {
+		return "", err
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.username = me.Username
+	return t.username, nil
 }
 
 // Receive calls the function with each message people send the bot, until
@@ -113,6 +140,11 @@ func (t *Telegram) Link(code string) string {
 // Messages from bots, and without text, are skipped. A message is received
 // once, whatever the function returns.
 func (t *Telegram) Receive(ctx context.Context, fn func(context.Context, messaging.Message) error) error {
+	// The token is checked, and the bot's username read, first
+	if _, err := t.me(ctx); err != nil {
+		return err
+	}
+
 	// An album, whose messages, which are updates of their own, can be
 	// split between polls, is held, when it's the last of a poll, until the
 	// next, which waits for its other messages briefly
@@ -128,7 +160,7 @@ func (t *Telegram) Receive(ctx context.Context, fn func(context.Context, messagi
 			timeout = albumWait
 		}
 		pollCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout+15)*time.Second)
-		updates, err := call[[]update](pollCtx, t.client, "getUpdates", getUpdatesRequest{
+		updates, err := callOnce[[]update](pollCtx, t.client, "getUpdates", getUpdatesRequest{
 			Offset:         t.offset,
 			Timeout:        timeout,
 			AllowedUpdates: []string{"message"},
@@ -250,8 +282,16 @@ func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.
 
 // upload opens the file, and sends it, with its caption, which is in the
 // parse mode, when it has one, by the method for its kind, and returns the
-// message it was sent as
+// message it was sent as, opening it, and sending it, again, when it's rate
+// limited, after waiting as long as it says, for a while
 func (t *Telegram) upload(ctx context.Context, address string, file messaging.File, name string, open func() (io.ReadCloser, error), caption, parseMode string) (message, error) {
+	return retry(ctx, func() (message, error) {
+		return t.uploadOnce(ctx, address, file, name, open, caption, parseMode)
+	})
+}
+
+// uploadOnce opens the file, and sends it, once
+func (t *Telegram) uploadOnce(ctx context.Context, address string, file messaging.File, name string, open func() (io.ReadCloser, error), caption, parseMode string) (message, error) {
 	content, err := open()
 	if err != nil {
 		return message{}, err
@@ -302,9 +342,10 @@ func (t *Telegram) Delete(ctx context.Context, address, id string) error {
 }
 
 // Typing shows "typing…" in the chat, for five seconds, or until a message
-// is sent
+// is sent. It isn't shown again, when it's rate limited, as it's shown again
+// soon anyway.
 func (t *Telegram) Typing(ctx context.Context, address string) error {
-	_, err := call[bool](ctx, t.client, "sendChatAction", sendChatActionRequest{ChatID: address, Action: "typing"})
+	_, err := callOnce[bool](ctx, t.client, "sendChatAction", sendChatActionRequest{ChatID: address, Action: "typing"})
 	return err
 }
 

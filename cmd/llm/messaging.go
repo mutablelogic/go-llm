@@ -90,20 +90,23 @@ func (s *channelStore) Save(_ context.Context, channels []schema.Channel) error 
 // credentials are set, such as Telegram's bot token, whose channels are
 // kept in a file, beside the providers, and whose messages are chatted in
 // their channel's session, by the registry, once it's made, or nil, when no
-// provider's credentials are set, or the providers can't be reached, which
-// is logged
+// provider's credentials are set, which is logged. A provider which can't be
+// reached yet is still added, and is tried again, as it receives messages.
 func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic.Pointer[registry.Registry], res *resource.Manager, zone func() *time.Location, opts ...messaging.Opt) (*messaging.Messaging, error) {
 	token, err := tools.Credential(ctx.Context(), TelegramCredential)
 	if err != nil {
 		ctx.Logger().WarnContext(ctx.Context(), "messaging not added, as its credential can't be read", "provider", telegram.Name, "credential", TelegramCredential, "error", err.Error())
 		return nil, nil
 	}
-	bot, err := telegram.New(ctx.Context(), token, tools.ClientOpts()...)
+	// The bot is added before Telegram is reached, which it's tried for
+	// again, as it receives messages, while it can't be, such as while it's
+	// rate limited
+	bot, err := telegram.New(token, tools.ClientOpts()...)
 	if err != nil {
-		ctx.Logger().ErrorContext(ctx.Context(), "messaging not added, as the bot can't be reached", "provider", telegram.Name, "error", err.Error())
+		ctx.Logger().ErrorContext(ctx.Context(), "messaging not added, as its credential isn't a bot's token", "provider", telegram.Name, "error", err.Error())
 		return nil, nil
 	}
-	ctx.Logger().InfoContext(ctx.Context(), "messaging provider added", "provider", telegram.Name, "bot", bot.Username())
+	ctx.Logger().InfoContext(ctx.Context(), "messaging provider added", "provider", telegram.Name)
 
 	// The files sent without names are named after when they were sent, in
 	// the person's time zone
