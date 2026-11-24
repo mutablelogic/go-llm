@@ -17,7 +17,7 @@ name: compact
 # The most time a summary has to be written, after which its marker is
 # failed, so the conversation is sent in full again, rather than left
 # without its summary
-timeout: 5m
+timeout: 15m
 
 # No tools of its own: an agent's tools aren't those of the conversation
 # it's run from, and it's given only the conversation's memory tools, when

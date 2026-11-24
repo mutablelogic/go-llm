@@ -611,7 +611,11 @@ export class ChatView extends LitElement {
         return html`
             <div class="marker">
                 <div class="rule"><span>${label}</span></div>
-                <div class="note">${marker.status === 'failed' ? `So they're still sent${marker.error ? `: ${marker.error}` : ''}` : "They're kept, but no longer sent"}</div>
+                <div class="note">${marker.status === 'failed'
+                    ? `So they're still sent${marker.error ? `: ${marker.error}` : ''}`
+                    : marker.status === 'pending'
+                        ? "They're still sent until it's written"
+                        : "They're kept, but no longer sent"}</div>
                 ${marker.summary ? html`
                     <details>
                         <summary>What the assistant remembers of them</summary>
