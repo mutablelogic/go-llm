@@ -7,6 +7,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -32,12 +33,17 @@ type Namespace struct {
 	seen bool
 	last uint64
 
+	// When the latest call which was handled was received, or zero, before
+	// any was
+	latest time.Time
+
 	// The last call which was handled as it was missed, since it started
 	// watching, as it can be told of it too
 	missed uint64
 }
 
 var _ toolkit.Namespace = (*Namespace)(nil)
+var _ toolkit.Runner = (*Namespace)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////
 // GLOBALS

@@ -17,6 +17,7 @@ import (
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	httpclient "github.com/mutablelogic/go-llm/webhook/httpclient"
 	httphandler "github.com/mutablelogic/go-llm/webhook/httphandler"
 	registry "github.com/mutablelogic/go-llm/webhook/registry"
 	schema "github.com/mutablelogic/go-llm/webhook/schema"
@@ -49,6 +50,12 @@ func (l *logs) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.buf.String()
+}
+
+func (l *logs) reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.buf.Reset()
 }
 
 func (l *logs) count(text string) int {
@@ -346,4 +353,131 @@ func Test_RunAgain(t *testing.T) {
 	defer run()()
 	eventually(t, func() bool { return out.count("call=2 ") == 1 })
 	assert.Equal(t, 1, out.count("call=1 "))
+}
+
+// runUntil runs the namespace, until the function returns true
+func runUntil(t *testing.T, ns *Namespace, out *logs, fn func() bool) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- ns.Run(ctx, slog.New(slog.NewTextHandler(out, nil))) }()
+	defer func() {
+		cancel()
+		assert.NoError(t, <-done)
+	}()
+	eventually(t, fn)
+}
+
+func Test_RunServerRestarts(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		before, after int // How many calls each server has
+	}{
+		{"Fewer calls than before", 5, 3},
+		{"More calls than before", 2, 5},
+		{"As many calls as before", 3, 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// The calls of a server, which are handled
+			first, second := newServer(t), newServer(t)
+			hook := first.webhook(t, "")
+			ns, err := New(first.URL + "/api")
+			require.NoError(t, err)
+			var out logs
+			called := false
+			runUntil(t, ns, &out, func() bool {
+				if !called && out.count("webhook calls are watched") == 1 {
+					called = true
+					for range test.before {
+						first.call(t, hook, "x")
+					}
+				}
+				return out.count(`msg="webhook call" `) == test.before
+			})
+
+			// And of one which replaced it, whose serial numbers start again,
+			// before it's watched, and then while it is
+			hook = second.webhook(t, "")
+			for range test.after {
+				second.call(t, hook, "x")
+			}
+			ns.client, err = httpclient.New(second.URL + "/api")
+			require.NoError(t, err)
+			out.reset()
+			runUntil(t, ns, &out, func() bool { return out.count(`msg="webhook call" `) == test.after })
+			called = false
+			runUntil(t, ns, &out, func() bool {
+				if !called && out.count("webhook calls are watched") == 2 {
+					called = true
+					second.call(t, hook, "x")
+				}
+				return out.count("call="+strconv.Itoa(test.after+1)+" ") == 1
+			})
+			for id := 1; id <= test.after; id++ {
+				assert.Equal(t, 1, out.count("call="+strconv.Itoa(id)+" "), id)
+			}
+		})
+	}
+}
+
+func Test_RunServerRestartsNotRead(t *testing.T) {
+	// The first call of a server whose serial numbers started again, which
+	// can't be read at first, isn't lost, though none was handled before
+	s := newServer(t)
+	hook := s.webhook(t, "")
+	ns, err := New(s.URL + "/api")
+	require.NoError(t, err)
+	ns.seen, ns.last = true, 50
+	var out logs
+	s.fail.Store(1)
+	called := false
+	runUntil(t, ns, &out, func() bool {
+		if !called && out.count("webhook calls are watched") == 1 {
+			called = true
+			s.call(t, hook, "x")
+		}
+		return out.count("call=1 ") == 1
+	})
+	assert.Equal(t, 1, out.count("webhook calls aren't watched"))
+}
+
+func Test_RunCallsDeleted(t *testing.T) {
+	// Calls which were deleted, including the last, don't look like a server
+	// which restarted, so those which remain aren't handled again
+	s := newServer(t)
+	keep, drop := s.webhook(t, ""), s.webhook(t, "")
+	ns, err := New(s.URL + "/api")
+	require.NoError(t, err)
+	var out logs
+	called := false
+	runUntil(t, ns, &out, func() bool {
+		if !called && out.count("webhook calls are watched") == 1 {
+			called = true
+			s.call(t, drop, "1")
+			s.call(t, keep, "2")
+			s.call(t, drop, "3")
+		}
+		return out.count(`msg="webhook call" `) == 3
+	})
+	_, err = s.registry.DeleteWebhook(t.Context(), drop.ID)
+	require.NoError(t, err)
+	s.call(t, keep, "4")
+	runUntil(t, ns, &out, func() bool { return out.count("call=4 ") == 1 })
+	assert.Equal(t, 4, out.count(`msg="webhook call" `))
+}
+
+func Test_RunCallNotReadAfterOthers(t *testing.T) {
+	// The first call which is seen, which can't be read at first, isn't
+	// taken to be of a server which restarted, so those before it was watched
+	// aren't handled
+	s := newServer(t)
+	hook := s.webhook(t, "")
+	s.call(t, hook, "1")
+	s.call(t, hook, "2")
+	out := s.run(t)
+	eventually(t, func() bool { return out.count("webhook calls are watched") == 1 })
+	s.fail.Store(1)
+	s.call(t, hook, "3")
+	eventually(t, func() bool { return out.count("call=3 ") == 1 })
+	assert.Equal(t, 1, out.count(`msg="webhook call" `))
 }

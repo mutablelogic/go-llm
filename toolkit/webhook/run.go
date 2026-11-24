@@ -134,6 +134,9 @@ func (ns *Namespace) watchCalls(parent context.Context, logger *slog.Logger) (bo
 	}
 	logger.InfoContext(ctx, "webhook calls are watched")
 	ns.missed = 0
+	if err := ns.checkRestarted(ctx); err != nil {
+		return true, err
+	}
 	if err := ns.handleMissed(ctx, logger); err != nil {
 		return true, err
 	}
@@ -177,8 +180,9 @@ func (ns *Namespace) handleChange(ctx context.Context, logger *slog.Logger, chan
 		return nil
 	}
 
-	// The first call which is seen is missed, when it can't be read
-	if !ns.seen {
+	// The first call which is seen, or the first once the server's serial
+	// numbers start again, is missed, when it can't be read
+	if !ns.seen || id <= ns.last {
 		ns.seen, ns.last = true, id-1
 	}
 
@@ -191,6 +195,24 @@ func (ns *Namespace) handleChange(ctx context.Context, logger *slog.Logger, chan
 		return err
 	}
 	return ns.handle(ctx, logger, *call)
+}
+
+// checkRestarted handles every call as missed, when the server's serial
+// numbers have started again, such as those of a server in memory, which
+// restarted: its oldest call is before the last which was handled, though it
+// was received after every one which was. Calls which were deleted don't
+// look like it, as those which remain were received before.
+func (ns *Namespace) checkRestarted(ctx context.Context) error {
+	if ns.latest.IsZero() {
+		return nil
+	}
+	list, err := ns.client.ListCalls(ctx, webhookschema.CallListRequest{Limit: types.Ptr(uint64(1))})
+	if err != nil {
+		return err
+	} else if len(list.Body) > 0 && list.Body[0].ID <= ns.last && list.Body[0].Received.After(ns.latest) {
+		ns.last = 0
+	}
+	return nil
 }
 
 // handleMissed handles the calls after the last which was handled, when one
@@ -236,6 +258,9 @@ func (ns *Namespace) handle(ctx context.Context, logger *slog.Logger, call webho
 		logger.InfoContext(ctx, "webhook call", attrs...)
 	}
 	ns.last = call.ID
+	if call.Received.After(ns.latest) {
+		ns.latest = call.Received
+	}
 	return nil
 }
 
