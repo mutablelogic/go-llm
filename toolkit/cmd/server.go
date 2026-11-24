@@ -150,35 +150,46 @@ func AddWebhook(ctx server.Cmd, tools *toolkit.Toolkit) (*webhook.Namespace, err
 
 // addHomeAssistantTools adds the Home Assistant tools, for the server whose
 // URL is in the HomeAssistantURLCredential credential, when it and the
-// access token's credential exist. When the URL's credential can't be read,
-// a warning is logged and the tools aren't added.
+// access token's credential exist, as AddTools adds the others
 func addHomeAssistantTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
-	endpoint, err := tools.Credential(ctx.Context(), HomeAssistantURLCredential)
-	if err != nil {
-		ctx.Logger().WarnContext(ctx.Context(), "tools not added, as their credential can't be read", "namespace", homeassistant.Name, "credential", HomeAssistantURLCredential, "error", err.Error())
+	endpoint, ok := readCredential(ctx, tools, homeassistant.Name, HomeAssistantURLCredential)
+	if !ok {
 		return nil
 	}
 	return addNamespace(ctx, tools, homeassistant.Name, HomeAssistantCredential, func(apiKey string, opts ...client.ClientOpt) (toolkit.Namespace, error) {
-		return homeassistant.New(endpoint, apiKey, opts...)
+		ns, err := homeassistant.New(endpoint, apiKey, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", HomeAssistantURLCredential, err)
+		}
+		return ns, nil
 	})
 }
 
 // addNamespace adds the namespace of tools returned by fn to the toolkit,
-// when the credential holding their API key, or endpoint, exists, and logs
-// its tools. fn is called with it, and the toolkit's client options. When the
-// credential can't be read, such as when it doesn't exist, a warning is
-// logged, with the namespace's name, and the tools aren't added.
+// when the credential holding their API key, or endpoint, can be read, and
+// logs its tools. fn is called with it, and the toolkit's client options.
 func addNamespace(ctx server.Cmd, tools *toolkit.Toolkit, name, key string, fn func(string, ...client.ClientOpt) (toolkit.Namespace, error)) error {
-	apiKey, err := tools.Credential(ctx.Context(), key)
-	if err != nil {
-		ctx.Logger().WarnContext(ctx.Context(), "tools not added, as their credential can't be read", "namespace", name, "credential", key, "error", err.Error())
+	value, ok := readCredential(ctx, tools, name, key)
+	if !ok {
 		return nil
 	}
-	ns, err := fn(apiKey, tools.ClientOpts()...)
+	ns, err := fn(value, tools.ClientOpts()...)
 	if err != nil {
 		return err
 	}
 	return add(ctx, tools, ns)
+}
+
+// readCredential returns the credential of the namespace, or false when it
+// can't be read, such as when it doesn't exist, when a warning is logged,
+// with the namespace's name, as its tools aren't added
+func readCredential(ctx server.Cmd, tools *toolkit.Toolkit, name, key string) (string, bool) {
+	value, err := tools.Credential(ctx.Context(), key)
+	if err != nil {
+		ctx.Logger().WarnContext(ctx.Context(), "tools not added, as their credential can't be read", "namespace", name, "credential", key, "error", err.Error())
+		return "", false
+	}
+	return value, true
 }
 
 // add adds the namespace to the toolkit, and logs its tools
