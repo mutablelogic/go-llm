@@ -83,7 +83,7 @@ func Test_Create(t *testing.T) {
 	created, text, err = call(logSession(t.Context(), session, func(_ llm.StreamType, text string) { log.WriteString(text) }), `{"description":"Signed","type":"github","secret":"s3cret"}`)
 	require.NoError(t, err)
 	assert.True(t, created.HasSecret)
-	assert.Contains(t, created.Note, "signed with the secret")
+	assert.Contains(t, created.Note, "signed with its secret")
 	assert.NotContains(t, created.Note, "no secret")
 	assert.NotContains(t, text, "s3cret")
 	assert.NotContains(t, log.String(), "s3cret")

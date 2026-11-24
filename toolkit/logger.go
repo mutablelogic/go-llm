@@ -2,6 +2,7 @@ package toolkit
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"slices"
 	"strconv"
@@ -210,4 +211,18 @@ func formatLine(record slog.Record, attrs []slog.Attr) string {
 		line.WriteString(value)
 	}
 	return line.String()
+}
+
+// spanError returns the error of a tool, as it's recorded on a span, which is
+// without the tokens of webhooks' URLs, such as of a page which couldn't be
+// read. The error which is returned is as it was.
+func spanError(err error) error {
+	if err == nil {
+		return nil
+	}
+	text := err.Error()
+	if hidden := webhook.HideToken(text); hidden != text {
+		return errors.New(hidden)
+	}
+	return err
 }

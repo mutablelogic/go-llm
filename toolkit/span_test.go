@@ -3,6 +3,8 @@ package toolkit_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
 
 	// Packages
@@ -54,6 +56,33 @@ func TestSpans(t *testing.T) {
 		name, attrs := last(t)
 		assert.Equal(t, "llm.toolkit.Run", name)
 		assert.Equal(t, map[string]string{"arg.name": "test:echo"}, attrs)
+	})
+
+	t.Run("Error", func(t *testing.T) {
+		// A tool's error is recorded without the token of a webhook's URL, and
+		// returned as it was, and one without a token is recorded as it is
+		const token = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+		failed := fmt.Errorf("can't read https://example.com/api/hook/%s", token)
+		require.NoError(t, tk.Add(toolkit.NewNamespace("fail", "", echoTool{name: "token", err: failed}, echoTool{name: "other", err: errors.New("tool failed")})))
+		tools, err := tk.Tools(ctx, "fail:token")
+		require.NoError(t, err)
+		for _, call := range []func() error{
+			func() error { _, err := tk.CallTool(ctx, "fail:token", nil); return err },
+			func() error { _, err := tools[0].Run(ctx, nil); return err },
+		} {
+			assert.ErrorIs(t, call(), failed)
+			span := recorder.Ended()[len(recorder.Ended())-1]
+			assert.Contains(t, span.Status().Description, "can't read https://example.com/api/hook/{token}")
+			require.NotEmpty(t, span.Events())
+			for _, event := range span.Events() {
+				for _, kv := range event.Attributes {
+					assert.NotContains(t, kv.Value.Emit(), token, span.Name())
+				}
+			}
+		}
+		_, err = tk.CallTool(ctx, "fail:other", nil)
+		require.Error(t, err)
+		assert.Contains(t, recorder.Ended()[len(recorder.Ended())-1].Status().Description, "tool failed")
 	})
 
 	t.Run("Credential", func(t *testing.T) {

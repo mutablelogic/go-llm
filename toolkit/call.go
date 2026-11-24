@@ -30,7 +30,7 @@ func (self *Toolkit) CallTool(ctx context.Context, name string, input json.RawMe
 	ctx, endSpan := otel.StartSpan(self.tracer, ctx, "llm.toolkit.CallTool",
 		attribute.String("arg.name", name),
 	)
-	defer func() { endSpan(err) }()
+	defer func() { endSpan(spanError(err)) }()
 
 	// Get the tool, and call it
 	entry, err := self.lookup(name)

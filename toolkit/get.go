@@ -332,7 +332,7 @@ func (t namedTool) Run(ctx context.Context, input json.RawMessage) (_ any, err e
 	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "llm.toolkit.Run",
 		attribute.String("arg.name", t.CanonicalName()),
 	)
-	defer func() { endSpan(err) }()
+	defer func() { endSpan(spanError(err)) }()
 
 	result, err := t.entry.call(t.toolkit.withWorkspaces(ctx), input)
 	if err != nil || result == nil {
