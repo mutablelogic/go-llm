@@ -180,7 +180,7 @@ func WithToolTimeout(timeout time.Duration) Opt {
 	}
 }
 
-// WithClientOpts are options of go-client, such as client.OptTrace, which
+// WithClientOpts are options of go-client, such as client.OptTracer, which
 // apply to the requests of the clients of each connector
 func WithClientOpts(opts ...client.ClientOpt) Opt {
 	return func(o *opt) error {
