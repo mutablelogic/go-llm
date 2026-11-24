@@ -101,7 +101,7 @@ func newServerMessaging(ctx server.Cmd, tools *toolkit.Toolkit, sessions *atomic
 	// The bot is added before Telegram is reached, which it's tried for
 	// again, as it receives messages, while it can't be, such as while it's
 	// rate limited
-	bot, err := telegram.New(token, tools.ClientOpts()...)
+	bot, err := telegram.New(token, telegram.WithTracer(ctx.Tracer()), telegram.WithClientOpts(tools.ClientOpts()...))
 	if err != nil {
 		ctx.Logger().ErrorContext(ctx.Context(), "messaging not added, as its credential isn't a bot's token", "provider", telegram.Name, "error", err.Error())
 		return nil, nil

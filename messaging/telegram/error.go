@@ -12,6 +12,8 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	attribute "go.opentelemetry.io/otel/attribute"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -132,6 +134,11 @@ func retry[T any](ctx context.Context, fn func() (T, error)) (T, error) {
 		if err == nil || !errors.As(err, &e) || e.Retry <= 0 || e.Retry > maxRetryWait || attempt >= maxAttempts {
 			return result, err
 		}
+		trace.SpanFromContext(ctx).AddEvent("rate limited", trace.WithAttributes(
+			attribute.String("method", e.Method),
+			attribute.String("retry_after", e.Retry.String()),
+			attribute.Int("attempt", attempt),
+		))
 		timer := time.NewTimer(e.Retry)
 		select {
 		case <-ctx.Done():

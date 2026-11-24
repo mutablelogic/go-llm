@@ -18,9 +18,12 @@ import (
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	otel "github.com/mutablelogic/go-client/pkg/otel"
 	llm "github.com/mutablelogic/go-llm"
 	messaging "github.com/mutablelogic/go-llm/messaging"
 	types "github.com/mutablelogic/go-server/pkg/types"
+	attribute "go.opentelemetry.io/otel/attribute"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -29,6 +32,7 @@ import (
 // Telegram is a Telegram bot, whose chats are channels
 type Telegram struct {
 	client *client.Client
+	tracer trace.Tracer
 	zone   func() *time.Location
 
 	// The bot's username, once it's known
@@ -78,18 +82,23 @@ const (
 ///////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
-// New returns the bot with the token, from BotFather, with the client
-// options, such as the user agent, or an endpoint for tests. It doesn't
+// New returns the bot with the token, from BotFather, with the options,
+// such as its tracer, and the client options, such as the user agent, or
+// an endpoint for tests. It doesn't
 // call Telegram: the token is checked, and the bot's username, which its
 // links have, is read, once it receives messages, or makes a link, so a bot
 // which Telegram can't be reached for yet, such as while it's rate limited,
 // is still added, and is reached later.
-func New(token string, opts ...client.ClientOpt) (*Telegram, error) {
-	c, err := newClient(token, opts...)
+func New(token string, opts ...Opt) (*Telegram, error) {
+	var o opt
+	if err := o.apply(opts); err != nil {
+		return nil, err
+	}
+	c, err := newClient(token, o.clientopts...)
 	if err != nil {
 		return nil, err
 	}
-	return &Telegram{client: c}, nil
+	return &Telegram{client: c, tracer: o.tracer}, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -110,7 +119,10 @@ func (t *Telegram) Username() string {
 // Link returns the link which opens a chat with the bot, whose Start
 // button sends it the code, or why it can't, such as that Telegram can't
 // be reached, or the token isn't a bot's, when its username isn't known
-func (t *Telegram) Link(ctx context.Context, code string) (string, error) {
+func (t *Telegram) Link(ctx context.Context, code string) (_ string, err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Link")
+	defer func() { endSpan(err) }()
+
 	username, err := t.me(ctx)
 	if err != nil {
 		return "", err
@@ -214,7 +226,13 @@ func sameAlbum(album, m *message) bool {
 // be, broken between paragraphs, or other blocks, and as plain text, when
 // Telegram can't parse its HTML, and returns the messages it was sent as.
 // Links don't have previews.
-func (t *Telegram) Send(ctx context.Context, address, text string) ([]messaging.Sent, error) {
+func (t *Telegram) Send(ctx context.Context, address, text string) (_ []messaging.Sent, err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Send",
+		attribute.String("arg.address", address),
+		attribute.Int("arg.text", len(text)),
+	)
+	defer func() { endSpan(err) }()
+
 	var result []messaging.Sent
 	for _, p := range parts(text, maxText) {
 		req := sendMessageRequest{ChatID: address, Text: p.html, ParseMode: "HTML", LinkPreviewOptions: &linkPreviewOptions{IsDisabled: true}}
@@ -239,7 +257,16 @@ func (t *Telegram) Send(ctx context.Context, address, text string) ([]messaging.
 // sent as. A caption whose formatting Telegram can't parse is sent as plain
 // text, with the file again. A file which is larger than a bot can send is
 // a note, with its name, after its caption.
-func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) ([]messaging.Sent, error) {
+func (t *Telegram) SendFile(ctx context.Context, address string, file messaging.File, open func() (io.ReadCloser, error), caption string) (_ []messaging.Sent, err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.SendFile",
+		attribute.String("arg.address", address),
+		attribute.String("arg.file", file.Name),
+		attribute.String("arg.type", file.Type),
+		attribute.Int64("arg.size", file.Size),
+		attribute.Int("arg.caption", len(caption)),
+	)
+	defer func() { endSpan(err) }()
+
 	name := fileName(file)
 	caption = strings.TrimSpace(caption)
 	var result []messaging.Sent
@@ -319,7 +346,14 @@ func messageID(m message) string {
 
 // Edit changes the text of the message, which the bot sent, to the text,
 // as it is, without formatting, and does nothing when it's the same
-func (t *Telegram) Edit(ctx context.Context, address, id, text string) error {
+func (t *Telegram) Edit(ctx context.Context, address, id, text string) (err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Edit",
+		attribute.String("arg.address", address),
+		attribute.String("arg.id", id),
+		attribute.Int("arg.text", len(text)),
+	)
+	defer func() { endSpan(err) }()
+
 	messageID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return llm.ErrBadParameter.Withf("invalid message id %q", id)
@@ -332,7 +366,13 @@ func (t *Telegram) Edit(ctx context.Context, address, id, text string) error {
 }
 
 // Delete deletes the message, which the bot sent
-func (t *Telegram) Delete(ctx context.Context, address, id string) error {
+func (t *Telegram) Delete(ctx context.Context, address, id string) (err error) {
+	ctx, endSpan := otel.StartSpan(t.tracer, ctx, "telegram.Delete",
+		attribute.String("arg.address", address),
+		attribute.String("arg.id", id),
+	)
+	defer func() { endSpan(err) }()
+
 	messageID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return llm.ErrBadParameter.Withf("invalid message id %q", id)

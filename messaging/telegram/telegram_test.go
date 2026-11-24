@@ -21,6 +21,10 @@ import (
 	messaging "github.com/mutablelogic/go-llm/messaging"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
+	attribute "go.opentelemetry.io/otel/attribute"
+	codes "go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	tracetest "go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 const token = "123456:SECRET-token"
@@ -179,7 +183,7 @@ func newBot(t *testing.T, b *bot) *Telegram {
 	t.Helper()
 	server := httptest.NewServer(b)
 	t.Cleanup(server.Close)
-	tg, err := New(token, client.OptEndpoint(server.URL))
+	tg, err := New(token, WithClientOpts(client.OptEndpoint(server.URL)))
 	require.NoError(t, err)
 	return tg
 }
@@ -204,7 +208,7 @@ func Test_Telegram_New(t *testing.T) {
 	// A wrong token is ErrForbidden, which doesn't have it
 	server := httptest.NewServer(b)
 	defer server.Close()
-	wrong, err := New("999:WRONG", client.OptEndpoint(server.URL))
+	wrong, err := New("999:WRONG", WithClientOpts(client.OptEndpoint(server.URL)))
 	require.NoError(t, err)
 	_, err = wrong.Link(ctx, "abc")
 	require.Error(t, err)
@@ -373,7 +377,7 @@ func Test_Telegram_RedirectError(t *testing.T) {
 		w.WriteHeader(http.StatusFound)
 	}))
 	defer server.Close()
-	tg, err := New(token, client.OptEndpoint(server.URL))
+	tg, err := New(token, WithClientOpts(client.OptEndpoint(server.URL)))
 	require.NoError(t, err)
 	_, err = tg.Link(context.Background(), "abc")
 	require.Error(t, err)
@@ -638,7 +642,7 @@ func Test_Telegram_DownloadClosed(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	tg, err := New(token, client.OptEndpoint(server.URL))
+	tg, err := New(token, WithClientOpts(client.OptEndpoint(server.URL)))
 	require.NoError(t, err)
 	content, err := tg.opener("big")(context.Background())
 	require.NoError(t, err)
@@ -652,4 +656,36 @@ func Test_Telegram_DownloadClosed(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the download wasn't cancelled when it was closed")
 	}
+}
+
+func Test_Telegram_Tracing(t *testing.T) {
+	ctx := context.Background()
+	recorder := tracetest.NewSpanRecorder()
+	tracer := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)).Tracer("test")
+	server := httptest.NewServer(&bot{limited: map[string]int{"sendMessage": 1}})
+	defer server.Close()
+	tg, err := New(token, WithTracer(tracer), WithClientOpts(client.OptEndpoint(server.URL)))
+	require.NoError(t, err)
+
+	// A message, which is rate limited, is one span, which says it waited
+	_, err = tg.Send(ctx, "7", "hello")
+	require.NoError(t, err)
+	spans := recorder.Ended()
+	require.Len(t, spans, 1)
+	assert.Equal(t, "telegram.Send", spans[0].Name())
+	assert.Contains(t, spans[0].Attributes(), attribute.String("arg.address", "7"))
+	require.Len(t, spans[0].Events(), 1)
+	assert.Equal(t, "rate limited", spans[0].Events()[0].Name)
+	assert.Contains(t, spans[0].Events()[0].Attributes, attribute.String("retry_after", "1s"))
+
+	// A link, whose error is the span's
+	wrong, err := New("999:WRONG", WithTracer(tracer), WithClientOpts(client.OptEndpoint(server.URL)))
+	require.NoError(t, err)
+	_, err = wrong.Link(ctx, "abc")
+	require.Error(t, err)
+	spans = recorder.Ended()
+	require.Len(t, spans, 2)
+	assert.Equal(t, "telegram.Link", spans[1].Name())
+	assert.Equal(t, codes.Error, spans[1].Status().Code)
+	assert.NotContains(t, spans[1].Status().Description, "WRONG")
 }

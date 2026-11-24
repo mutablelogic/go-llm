@@ -91,6 +91,10 @@ type Delivery struct {
 type received struct {
 	channel schema.Channel
 	message Message
+
+	// The span of when it was received, which the span of its handling is
+	// in, so they're one trace
+	span trace.SpanContext
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -189,7 +193,7 @@ func (m *Messaging) Providers() []string {
 // there's more than one, and ErrNotFound when there's no provider with the
 // name.
 func (m *Messaging) Connect(ctx context.Context, session uuid.UUID, provider string) (_ string, _ time.Time, err error) {
-	_, endSpan := otel.StartSpan(m.tracer, ctx, "messaging.Connect",
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "messaging.Connect",
 		attribute.String("arg.session", session.String()),
 		attribute.String("arg.provider", provider),
 	)
@@ -497,7 +501,16 @@ func retryDelay(wait time.Duration, err error) (time.Duration, bool) {
 // received connects the chat the message was sent in, when it has a code,
 // or queues it for its channel's session, or ignores it, when its chat
 // isn't connected
-func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider Provider, message Message) error {
+func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider Provider, message Message) (err error) {
+	ctx, endSpan := otel.StartSpan(m.tracer, ctx, "messaging.Received",
+		attribute.String("arg.provider", provider.Name()),
+		attribute.String("arg.address", message.Address),
+		attribute.Bool("arg.code", message.Code != ""),
+		attribute.Int("arg.text", len(message.Text)),
+		attribute.Int("arg.attachments", len(message.Attachments)),
+	)
+	defer func() { endSpan(err) }()
+
 	if message.Code != "" {
 		channel, err := m.pair(ctx, provider, message)
 		switch {
@@ -520,7 +533,7 @@ func (m *Messaging) received(ctx context.Context, logger *slog.Logger, provider 
 	} else if (strings.TrimSpace(message.Text) == "" && len(message.Attachments) == 0) || m.chat == nil {
 		return nil
 	}
-	if !m.enqueue(ctx, logger, received{channel: channel, message: message}) {
+	if !m.enqueue(ctx, logger, received{channel: channel, message: message, span: trace.SpanContextFromContext(ctx)}) {
 		_, err := provider.Send(ctx, message.Address, textBusy)
 		return err
 	}
@@ -649,12 +662,22 @@ func (m *Messaging) handle(ctx context.Context, logger *slog.Logger, r received)
 	if provider == nil {
 		return
 	}
+
+	// It's traced in the trace of when it was received
+	var err error
+	ctx, endSpan := otel.StartSpan(m.tracer, trace.ContextWithSpanContext(ctx, r.span), "messaging.Handle",
+		attribute.String("arg.provider", r.channel.Provider),
+		attribute.String("arg.address", r.channel.Address),
+		attribute.String("arg.session", r.channel.Session.String()),
+	)
+	defer func() { endSpan(err) }()
+
 	// What's happening, such as what the tools it calls are doing, is shown
 	// in a message, once the reply has taken a while, which is deleted once
 	// it's replied
 	stop := m.typing(ctx, provider, r.channel.Address)
 	progress := newStatus(ctx, provider, r.channel.Address)
-	err := m.chat(ctx, r.channel, r.message, progress.show)
+	err = m.chat(ctx, r.channel, r.message, progress.show)
 	progress.close()
 	stop()
 	if err == nil || ctx.Err() != nil {

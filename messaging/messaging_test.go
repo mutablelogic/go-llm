@@ -21,6 +21,10 @@ import (
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
+	attribute "go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	tracetest "go.opentelemetry.io/otel/sdk/trace/tracetest"
+	trace "go.opentelemetry.io/otel/trace"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -613,4 +617,49 @@ func Test_Messaging_ConnectUnreachable(t *testing.T) {
 	link, _, err := m.Connect(ctx, uuid.New(), "")
 	require.NoError(t, err)
 	assert.NotEmpty(t, code(t, link))
+}
+
+func Test_Messaging_Tracing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	recorder := tracetest.NewSpanRecorder()
+	tracer := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)).Tracer("test")
+	provider := newFake("fake")
+	chatted := make(chan trace.SpanContext, 1)
+	m, err := messaging.New(messaging.NewStore(), messaging.WithTracer(tracer), messaging.WithProvider(provider), messaging.WithChat(func(ctx context.Context, _ schema.Channel, _ messaging.Message, _ func(string)) error {
+		chatted <- trace.SpanContextFromContext(ctx)
+		return nil
+	}))
+	require.NoError(t, err)
+	go m.Run(ctx, nil)
+
+	link, _, err := m.Connect(ctx, uuid.New(), "")
+	require.NoError(t, err)
+	provider.incoming <- messaging.Message{Address: "1", Code: code(t, link), Text: "/start"}
+	provider.incoming <- messaging.Message{Address: "1", Text: "hello"}
+
+	// The message is chatted in the span which handles it, which is in the
+	// trace of when it was received
+	var chat trace.SpanContext
+	select {
+	case chat = <-chatted:
+	case <-time.After(time.Second):
+		t.Fatal("message not sent to the session")
+	}
+	var received, handle sdktrace.ReadOnlySpan
+	assert.Eventually(t, func() bool {
+		received, handle = nil, nil
+		for _, span := range recorder.Ended() {
+			switch {
+			case span.Name() == "messaging.Received" && span.SpanContext().TraceID() == chat.TraceID():
+				received = span
+			case span.Name() == "messaging.Handle":
+				handle = span
+			}
+		}
+		return received != nil && handle != nil
+	}, time.Second, 10*time.Millisecond)
+	assert.Equal(t, chat.SpanID(), handle.SpanContext().SpanID())
+	assert.Equal(t, received.SpanContext().SpanID(), handle.Parent().SpanID())
+	assert.Contains(t, received.Attributes(), attribute.String("arg.address", "1"))
 }
