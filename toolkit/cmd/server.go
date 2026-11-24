@@ -125,24 +125,8 @@ func AddTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 		addNamespace(ctx, tools, deepseek.Name, DeepSeekCredential, deepseek.New),
 		addNamespace(ctx, tools, newsapi.Name, NewsAPICredential, newsapi.New),
 		addHomeAssistantTools(ctx, tools),
+		addWebhook(ctx, tools),
 	)
-}
-
-// AddWebhook adds the webhook namespace to the toolkit, as AddTools adds the
-// others, for the webhook server whose endpoint is in the
-// WebhookEndpointCredential credential, and returns it, as the server runs
-// it, or nil, when it isn't added
-func AddWebhook(ctx server.Cmd, tools *toolkit.Toolkit) (*webhook.Namespace, error) {
-	var ns *webhook.Namespace
-	if err := addNamespace(ctx, tools, webhook.Name, WebhookEndpointCredential, func(endpoint string, opts ...client.ClientOpt) (_ toolkit.Namespace, err error) {
-		if ns, err = webhook.New(endpoint, opts...); err != nil {
-			return nil, fmt.Errorf("%s: %w", WebhookEndpointCredential, err)
-		}
-		return ns, nil
-	}); err != nil {
-		return nil, err
-	}
-	return ns, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -160,6 +144,19 @@ func addHomeAssistantTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 		ns, err := homeassistant.New(endpoint, apiKey, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", HomeAssistantURLCredential, err)
+		}
+		return ns, nil
+	})
+}
+
+// addWebhook adds the webhook namespace, for the webhook server whose
+// endpoint is in the WebhookEndpointCredential credential, when it exists,
+// as AddTools adds the others
+func addWebhook(ctx server.Cmd, tools *toolkit.Toolkit) error {
+	return addNamespace(ctx, tools, webhook.Name, WebhookEndpointCredential, func(endpoint string, opts ...client.ClientOpt) (toolkit.Namespace, error) {
+		ns, err := webhook.New(endpoint, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", WebhookEndpointCredential, err)
 		}
 		return ns, nil
 	})

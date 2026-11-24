@@ -31,6 +31,7 @@ type tool struct {
 
 var _ llm.Tool = (*tool)(nil)
 var _ toolkit.Namespace = (*Heartbeats)(nil)
+var _ toolkit.Runner = (*Heartbeats)(nil)
 
 // toolInput is the input of the heartbeats tool: its operation, and what the
 // operation needs
