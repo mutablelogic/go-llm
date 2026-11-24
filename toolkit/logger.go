@@ -10,6 +10,7 @@ import (
 
 	// Packages
 	llm "github.com/mutablelogic/go-llm"
+	webhook "github.com/mutablelogic/go-llm/webhook/schema"
 	attribute "go.opentelemetry.io/otel/attribute"
 	trace "go.opentelemetry.io/otel/trace"
 )
@@ -91,8 +92,10 @@ func (s logSession) Usage(usage llm.Usage) {
 }
 
 // Progress streams the tool's progress, which replaces its progress before,
-// as an llm.Progress, and adds it to the span, as an event
+// as an llm.Progress, and adds it to the span, as an event, without the tokens
+// of webhooks' URLs
 func (s logSession) Progress(progress, total float64, message string) {
+	message = webhook.HideToken(message)
 	if s.log.span != nil {
 		s.log.span.AddEvent("progress", trace.WithAttributes(
 			attribute.String("tool", s.log.name),
@@ -114,13 +117,18 @@ func (h *toolHandler) Enabled(_ context.Context, level slog.Level) bool {
 
 // Handle streams the record as a line, of the tool's name, its level, when
 // it isn't info, its message, and its attributes, and adds it to the span,
-// as an event
+// as an event, without the tokens of webhooks' URLs, such as of a page which
+// a tool reads
 func (h *toolHandler) Handle(_ context.Context, record slog.Record) error {
+	record.Message = webhook.HideToken(record.Message)
 	attrs := slices.Clone(h.attrs)
 	record.Attrs(func(attr slog.Attr) bool {
 		attrs = appendAttr(attrs, h.prefix, attr)
 		return true
 	})
+	for i, attr := range attrs {
+		attrs[i].Value = slog.StringValue(webhook.HideToken(attr.Value.String()))
+	}
 
 	if h.span != nil {
 		event := make([]attribute.KeyValue, 0, len(attrs)+2)

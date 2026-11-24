@@ -72,7 +72,7 @@ func (t *create) Run(ctx context.Context, input json.RawMessage) (any, error) {
 
 	// The token is only returned now, in its URL, when it has one
 	result := createOutput{webhookOutput: newWebhookOutput(webhook.Webhook), URL: webhook.URL}
-	notes := []string{"Register the URL with the service now, as it is, as it can't be seen again. Don't give it to the person."}
+	notes := []string{"Register the URL with the service now, as it is, as it can't be seen again. Don't give it to the person, or call it, or fetch it: webhook:test makes a test call."}
 	if webhook.URL == "" {
 		result.Token = webhook.Token
 		notes = []string{"The webhook server has no public address, so a service on the internet can't call it. Its URL is the server's, then /hook/, and the token, which can't be seen again. Don't give it to the person."}
@@ -80,7 +80,7 @@ func (t *create) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	if webhook.HasSecret {
 		notes = append(notes, "Its calls are refused unless they're signed with the secret, so register the same one with the service.")
 	} else {
-		notes = append(notes, "It has no secret, so its calls' signatures aren't checked.")
+		notes = append(notes, "It's open: it has no secret, so its calls' signatures aren't checked, and anyone who has the URL can call it. Tell the person so.")
 	}
 	notes = append(notes, "Its calls are kept, but don't come to this conversation yet.")
 	result.Note = strings.Join(notes, " ")

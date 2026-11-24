@@ -37,9 +37,7 @@ type listInput struct {
 	Limit   uint64 `json:"call_limit,omitempty" help:"Most calls to list, which is 10 when it isn't given" min:"1" max:"20" optional:""`
 }
 
-// callOutput is a call, as a model is told it, without what was sent. Its
-// signature is only there when it was accepted, as why it was refused says
-// what was wrong with it.
+// callOutput is a call, as a model is told it, without what was sent
 type callOutput struct {
 	ID        uint64 `json:"id"`
 	Webhook   uint64 `json:"webhook_id"`
@@ -47,7 +45,7 @@ type callOutput struct {
 	Event     string `json:"event,omitempty"`
 	Status    string `json:"status"`
 	Test      bool   `json:"test,omitempty"`
-	Signature string `json:"signature,omitempty"`
+	Signature string `json:"signature"`
 	Error     string `json:"error,omitempty"`
 }
 
@@ -71,9 +69,12 @@ const (
 	// callsLimit is the most calls which are listed
 	callsLimit = 20
 
-	// The signature of a call which was accepted, which was verified, or
-	// which wasn't checked, as its webhook had no secret when it was received
+	// The signature of a call, which was verified, or failed, as it's missing,
+	// or isn't the webhook's, so it was refused, or which wasn't checked, as
+	// its webhook had no secret when it was received, or it was refused first,
+	// as it was too large
 	signatureVerified   = "verified"
+	signatureFailed     = "failed"
 	signatureNotChecked = "not_checked"
 )
 
@@ -83,7 +84,7 @@ const (
 func (*list) Name() string { return "list" }
 
 func (*list) Description() string {
-	return "Lists this conversation's webhooks, and the most recent calls of them, newest first, such as those of the past hour: when each was received, its event, which is what its service says happened, whether it was accepted, or refused, and why, and the signature of one which was accepted: verified, or not_checked, when the webhook had no secret to check it with, so anyone who has its URL could have sent it. A test is a call which webhook:test made, and no service sent. The filters of calls don't change which webhooks are listed. A call's id is a serial number across every webhook, so isn't how many there are, which is calls_count. What a call sent, which webhook:get returns, and a webhook's URL, aren't listed."
+	return "Lists this conversation's webhooks, and the most recent calls of them, newest first, such as those of the past hour: when each was received, its event, which is what its service says happened, whether it was accepted, or refused, and why, and its signature: verified, failed, when it's missing, or wrong, so the call was refused, or not_checked, when the webhook had no secret to check it with, so anyone who has its URL could have sent it. A test is a call which webhook:test made, and no service sent. The filters of calls don't change which webhooks are listed. A call's id is a serial number across every webhook, so isn't how many there are, which is calls_count. What a call sent, which webhook:get returns, and a webhook's URL, aren't listed."
 }
 
 func (*list) InputSchema() *jsonschema.Schema {
@@ -166,22 +167,22 @@ func newCallOutput(call schema.Call) callOutput {
 		ID:        call.ID,
 		Webhook:   call.Webhook,
 		Received:  call.Received.UTC().Format(time.RFC3339),
-		Event:     hideToken(call.Event),
+		Event:     schema.HideToken(call.Event),
 		Status:    call.Status(),
 		Test:      call.Test,
 		Signature: signature(call),
-		Error:     hideToken(call.Error),
+		Error:     schema.HideToken(call.Error),
 	}
 }
 
-// signature returns the signature of a call which was accepted, or empty. One
-// which isn't verified is only accepted when its webhook has no secret.
+// signature returns the signature of a call. One which isn't verified is only
+// forbidden when its signature was checked, and failed.
 func signature(call schema.Call) string {
 	switch {
-	case call.Status() != schema.CallAccepted:
-		return ""
 	case call.Verified:
 		return signatureVerified
+	case strings.HasPrefix(call.Error, llm.ErrForbidden.Error()):
+		return signatureFailed
 	default:
 		return signatureNotChecked
 	}

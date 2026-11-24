@@ -54,7 +54,7 @@ func Test_Create(t *testing.T) {
 	created, text, err := call(inSession(t.Context(), session), `{"description":" GitHub issues ","type":"github"}`)
 	require.NoError(t, err)
 	assert.False(t, created.HasSecret)
-	assert.Contains(t, created.Note, "no secret")
+	assert.Contains(t, created.Note, "It's open: it has no secret")
 	assert.NotContains(t, text, session.String())
 	assert.Equal(t, "GitHub issues", created.Description)
 	assert.Equal(t, "github", created.Type)
