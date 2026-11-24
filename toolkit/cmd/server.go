@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
@@ -14,6 +15,7 @@ import (
 	newsapi "github.com/mutablelogic/go-llm/toolkit/newsapi"
 	ollama "github.com/mutablelogic/go-llm/toolkit/ollama"
 	weatherapi "github.com/mutablelogic/go-llm/toolkit/weatherapi"
+	webhook "github.com/mutablelogic/go-llm/toolkit/webhook"
 	server "github.com/mutablelogic/go-server"
 	servercmd "github.com/mutablelogic/go-server/pkg/cmd"
 	httprouter "github.com/mutablelogic/go-server/pkg/httprouter"
@@ -55,6 +57,11 @@ const (
 	// HomeAssistantURLCredential is the key of the credential holding the URL
 	// of the Home Assistant server, such as http://homeassistant.local:8123
 	HomeAssistantURLCredential = "HOMEASSISTANT_URL"
+
+	// WebhookEndpointCredential is the key of the credential holding the
+	// endpoint of the webhook server's API, such as
+	// http://localhost:8087/api, which adds the webhook namespace
+	WebhookEndpointCredential = "WEBHOOK_ENDPOINT"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -119,6 +126,26 @@ func AddTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 		addNamespace(ctx, tools, newsapi.Name, NewsAPICredential, newsapi.New),
 		addHomeAssistantTools(ctx, tools),
 	)
+}
+
+// AddWebhook adds the webhook namespace to the toolkit, for the webhook
+// server whose endpoint is in the WebhookEndpointCredential credential, and
+// returns it, which the server runs, or nil, when the credential can't be
+// read, such as when it doesn't exist, which is logged as a warning. Returns
+// an error when the endpoint isn't a URL.
+func AddWebhook(ctx server.Cmd, tools *toolkit.Toolkit) (*webhook.Namespace, error) {
+	endpoint, err := tools.Credential(ctx.Context(), WebhookEndpointCredential)
+	if err != nil {
+		ctx.Logger().WarnContext(ctx.Context(), "webhooks not started, as their credential can't be read", "namespace", webhook.Name, "credential", WebhookEndpointCredential, "error", err.Error())
+		return nil, nil
+	}
+	ns, err := webhook.New(endpoint, tools.ClientOpts()...)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", WebhookEndpointCredential, err)
+	} else if err := add(ctx, tools, ns); err != nil {
+		return nil, err
+	}
+	return ns, nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -34,6 +34,7 @@ import (
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 	llmtools "github.com/mutablelogic/go-llm/toolkit/llm"
+	webhook "github.com/mutablelogic/go-llm/toolkit/webhook"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	workspacecmd "github.com/mutablelogic/go-llm/workspace/cmd"
 	filer "github.com/mutablelogic/go-llm/workspace/filer"
@@ -292,6 +293,13 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 			ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", m.Name(), "tools", len(m.Tools()))
 		}
 
+		// The webhooks, when the endpoint of a webhook server is set, which
+		// is watched for their calls
+		hooks, err := toolkitcmd.AddWebhook(ctx, tools)
+		if err != nil {
+			return err
+		}
+
 		// Each reply in a session, with the files it made, is sent to its
 		// channels, in the order they're replied, as the chat waits for it to
 		// be sent, for up to two minutes, as files can take a while
@@ -317,7 +325,7 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		// toolkit, as the connectors' are
 		return runner.Filer.WithFiler(ctx, tools, func(files *filer.Server) error {
 			return runner.Connector.WithConnectorRegistry(ctx, &runner.RunServer, b, func(connectors *mcpregistry.Registry) error {
-				return runner.withRegistry(ctx, b, workspaces, files, mem, h, res, m, connectors, tools, events, build, store, sessions, agents, outcomes, replies, creds)
+				return runner.withRegistry(ctx, b, workspaces, files, mem, h, res, m, hooks, connectors, tools, events, build, store, sessions, agents, outcomes, replies, creds)
 			}, mcpregistry.WithStore(connectorStore), mcpregistry.WithCredentialsProvider(creds), mcpregistry.WithToolkit(tools), mcpregistry.WithAgents(runAgentTool(events)))
 		})
 	}, toolkit.WithBroadcaster(b), toolkit.WithCredentialsProvider(creds), toolkit.WithWorkspaces(workspaces))
@@ -338,9 +346,9 @@ func runAgentTool(events *atomic.Pointer[registry.Registry]) func(context.Contex
 
 // withRegistry runs the server, with the registry, which has the stores,
 // and the toolkit, and runs the heartbeats which fire, and the messaging's
-// chats, the resources' cleaning, the connectors, the workspaces, and the
+// chats, the webhooks, the resources' cleaning, the connectors, the workspaces, and the
 // broadcaster, until any stops
-func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, workspaces *workspace.Registry, files *filer.Server, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc, creds credential.CredentialProvider) error {
+func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster, workspaces *workspace.Registry, files *filer.Server, mem *memory.Memory, h *heartbeat.Heartbeats, res *resource.Manager, m *messaging.Messaging, hooks *webhook.Namespace, connectors *mcpregistry.Registry, tools *toolkit.Toolkit, events *atomic.Pointer[registry.Registry], build registry.EventBuilder, store registry.ProviderStore, sessions *sessionStore, agents *agentStore, outcomes *eventStore, replies registry.ReplyFunc, creds credential.CredentialProvider) error {
 	return runner.Registry.WithRegistry(ctx, &runner.RunServer, func(r *registry.Registry) error {
 		// The example agents, as they are, before the server starts
 		createAgents(ctx, r)
@@ -379,6 +387,12 @@ func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster
 					return nil
 				}
 				return m.Run(runCtx, ctx.Logger())
+			})
+		}
+		if hooks != nil {
+			group.Go(func() error {
+				// The webhook server is watched for calls, which are logged
+				return hooks.Run(runCtx, ctx.Logger())
 			})
 		}
 		group.Go(func() error {
