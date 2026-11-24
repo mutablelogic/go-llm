@@ -128,7 +128,7 @@ func (h *toolHandler) Handle(_ context.Context, record slog.Record) error {
 		return true
 	})
 	for i, attr := range attrs {
-		attrs[i].Value = slog.StringValue(webhook.HideToken(attr.Value.String()))
+		attrs[i] = slog.String(webhook.HideToken(attr.Key), webhook.HideToken(attr.Value.String()))
 	}
 
 	if h.span != nil {

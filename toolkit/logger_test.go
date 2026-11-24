@@ -57,7 +57,7 @@ func Test_NewSession(t *testing.T) {
 
 	t.Run("Token", func(t *testing.T) {
 		// Neither the stream, nor the span, has the token of a webhook's URL,
-		// in a message, an attribute, or progress
+		// in a message, an attribute, its key, or progress
 		const token = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 		const link = "https://example.com/api/hook/" + token
 		recorder := tracetest.NewSpanRecorder()
@@ -65,20 +65,22 @@ func Test_NewSession(t *testing.T) {
 		var lines []string
 		session := toolkit.NewSession("fetch", uuid.Nil(), func(_ llm.StreamType, line string) { lines = append(lines, line) }, span)
 		toolkit.Logf(toolkit.WithSession(context.Background(), session), "Reading %s", link)
-		session.Logger().With("from", link).Info("reading", "url", link, slog.Group("group", "url", link))
+		session.Logger().With("from", link).Info("reading", "url", link, slog.Group("group", "url", link), link, "key")
+		session.Logger().WithGroup(link).Info("reading", "url", "group")
 		session.Progress(1, 2, "Reading "+link)
 		span.End()
 
-		require.Len(t, lines, 3)
+		require.Len(t, lines, 4)
 		assert.Equal(t, "Reading https://example.com/api/hook/{token}", lines[0])
-		assert.Contains(t, lines[2], "hook/{token}")
+		assert.Contains(t, lines[3], "hook/{token}")
 		for _, line := range lines {
 			assert.NotContains(t, line, token)
 		}
-		require.Len(t, recorder.Ended()[0].Events(), 3)
+		require.Len(t, recorder.Ended()[0].Events(), 4)
 		for _, event := range recorder.Ended()[0].Events() {
 			assert.NotContains(t, event.Name, token)
 			for _, attr := range event.Attributes {
+				assert.NotContains(t, string(attr.Key), token)
 				assert.NotContains(t, attr.Value.Emit(), token)
 			}
 		}
