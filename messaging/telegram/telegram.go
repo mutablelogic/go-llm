@@ -6,6 +6,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -35,9 +36,15 @@ type Telegram struct {
 	tracer trace.Tracer
 	zone   func() *time.Location
 
-	// The bot's username, once it's known
+	// The bot's username, once it's known, and, while getMe is rate
+	// limited, its error, and until when, which Receive, and Link, share,
+	// so neither calls it again before then. lookup is held while it's
+	// called, so it's called once at a time.
+	lookup   sync.Mutex
 	mu       sync.Mutex
 	username string
+	limited  *Error
+	until    time.Time
 
 	// The identifier of the next update, which only Receive changes
 	offset int64
@@ -131,20 +138,47 @@ func (t *Telegram) Link(ctx context.Context, code string) (_ string, err error) 
 }
 
 // me returns the bot's username, reading it, and so checking the token,
-// when it isn't known yet. It isn't read again, when it's rate limited, so
-// what's waiting for it, such as a link, is told why at once.
+// when it isn't known yet, once at a time. It isn't read again, when it's
+// rate limited, until it can be, so what's waiting for it, such as a link,
+// is told why at once, with how much longer to wait.
 func (t *Telegram) me(ctx context.Context) (string, error) {
-	if username := t.Username(); username != "" {
-		return username, nil
+	t.lookup.Lock()
+	defer t.lookup.Unlock()
+	if username, err := t.known(); username != "" || err != nil {
+		return username, err
 	}
 	me, err := callOnce[user](ctx, t.client, "getMe", struct{}{})
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var e *Error
+	if errors.As(err, &e) && e.Retry > 0 {
+		t.limited, t.until = e, time.Now().Add(e.Retry)
+	}
 	if err != nil {
 		return "", err
 	}
+	t.username, t.limited = me.Username, nil
+	return t.username, nil
+}
+
+// known returns the bot's username, when it's known, or the error of getMe,
+// with how much longer to wait, while it's rate limited, or neither
+func (t *Telegram) known() (string, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.username = me.Username
-	return t.username, nil
+	if t.username != "" {
+		return t.username, nil
+	} else if t.limited == nil {
+		return "", nil
+	}
+	remaining := time.Until(t.until)
+	if remaining <= 0 {
+		t.limited = nil
+		return "", nil
+	}
+	e := *t.limited
+	e.Retry = remaining
+	return "", &e
 }
 
 // Receive calls the function with each message people send the bot, until

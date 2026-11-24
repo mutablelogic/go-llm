@@ -712,14 +712,17 @@ func (m *Messaging) typing(ctx context.Context, provider Provider, address strin
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(typingInterval)
-		defer ticker.Stop()
+		timer := time.NewTimer(typingInterval)
+		defer timer.Stop()
 		for {
-			_ = typer.Typing(ctx, address)
+			// It's shown again after a while, or after as long as its
+			// error says, when it's longer, such as when it's rate limited
+			err := typer.Typing(ctx, address)
+			timer.Reset(max(typingInterval, RetryAfter(err)))
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-timer.C:
 			}
 		}
 	}()

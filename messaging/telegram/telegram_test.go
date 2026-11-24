@@ -238,9 +238,36 @@ func Test_Telegram_RateLimited(t *testing.T) {
 	assert.Equal(t, time.Second, messaging.RetryAfter(err))
 	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
 	assert.Equal(t, "telegram getMe: Too Many Requests: retry after 1", err.Error())
+
+	// Until it can be, getMe isn't called again, by a link, or receiving,
+	// which are told how much longer to wait
+	_, err = tg.Link(ctx, "abc")
+	require.ErrorAs(t, err, &e)
+	assert.Greater(t, e.RetryAfter(), time.Duration(0))
+	assert.LessOrEqual(t, e.RetryAfter(), time.Second)
+	err = tg.Receive(ctx, func(context.Context, messaging.Message) error { return nil })
+	assert.ErrorIs(t, err, llm.ErrServiceUnavailable)
+	assert.Len(t, b.paths, 1)
+
+	// Once it can be, it is
+	time.Sleep(time.Second)
 	link, err := tg.Link(ctx, "abc")
 	require.NoError(t, err)
 	assert.Equal(t, "https://t.me/ada_bot?start=abc", link)
+	assert.Len(t, b.paths, 2)
+
+	// Links at once call getMe once
+	b = &bot{}
+	tg = newBot(t, b)
+	var wg sync.WaitGroup
+	for range 5 {
+		wg.Go(func() {
+			_, err := tg.Link(ctx, "abc")
+			assert.NoError(t, err)
+		})
+	}
+	wg.Wait()
+	assert.Equal(t, []string{"/bot" + token + "/getMe"}, b.paths)
 
 	b = &bot{limited: map[string]int{"getUpdates": 1}}
 	tg = newBot(t, b)
@@ -688,4 +715,21 @@ func Test_Telegram_Tracing(t *testing.T) {
 	assert.Equal(t, "telegram.Link", spans[1].Name())
 	assert.Equal(t, codes.Error, spans[1].Status().Code)
 	assert.NotContains(t, spans[1].Status().Description, "WRONG")
+}
+
+func Test_Telegram_ErrorKinds(t *testing.T) {
+	for code, kind := range map[int]error{
+		http.StatusBadRequest:          llm.ErrBadParameter,
+		http.StatusUnauthorized:        llm.ErrForbidden,
+		http.StatusForbidden:           llm.ErrForbidden,
+		http.StatusNotFound:            llm.ErrNotFound,
+		http.StatusConflict:            llm.ErrConflict,
+		http.StatusTooManyRequests:     llm.ErrServiceUnavailable,
+		http.StatusInternalServerError: llm.ErrServiceUnavailable,
+		http.StatusBadGateway:          llm.ErrServiceUnavailable,
+		599:                            llm.ErrServiceUnavailable,
+		http.StatusTeapot:              llm.ErrInternalServerError,
+	} {
+		assert.ErrorIs(t, &Error{Method: "getMe", Code: code}, kind, code)
+	}
 }

@@ -83,7 +83,7 @@ func (e *Error) RetryAfter() time.Duration {
 
 // Unwrap returns the kind of error its code is, such as ErrForbidden, for
 // a token which isn't the bot's, and ErrServiceUnavailable, when it's
-// rate limited
+// rate limited, or Telegram fails, with a 5xx
 func (e *Error) Unwrap() error {
 	switch e.Code {
 	case http.StatusBadRequest:
@@ -94,7 +94,10 @@ func (e *Error) Unwrap() error {
 		return llm.ErrNotFound
 	case http.StatusConflict:
 		return llm.ErrConflict
-	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	case http.StatusTooManyRequests:
+		return llm.ErrServiceUnavailable
+	}
+	if e.Code >= 500 && e.Code <= 599 {
 		return llm.ErrServiceUnavailable
 	}
 	return llm.ErrInternalServerError
