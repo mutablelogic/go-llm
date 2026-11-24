@@ -30,24 +30,31 @@ DELETE FROM webhook WHERE id = @id
 RETURNING id, session, description, type, coalesce(secret, ''), created_at;
 
 -- call.create
-INSERT INTO call (webhook, received_at, method, query, headers, "values", event, delivery, verified, error, body)
-VALUES (@webhook, @received, @method, @query, @headers, @values, nullif(@event, ''), nullif(@delivery, ''), @verified, nullif(@error, ''), @body)
-RETURNING id, webhook, received_at, method, query, headers, "values", coalesce(event, ''), coalesce(delivery, ''), verified, coalesce(error, ''), body;
+INSERT INTO call (webhook, received_at, method, query, headers, "values", event, delivery, verified, test, error, body)
+VALUES (@webhook, @received, @method, @query, @headers, @values, nullif(@event, ''), nullif(@delivery, ''), @verified, @test, nullif(@error, ''), @body)
+RETURNING id, webhook, received_at, method, query, headers, "values", coalesce(event, ''), coalesce(delivery, ''), verified, test, coalesce(error, ''), body;
 
 -- call.get
-SELECT id, webhook, received_at, method, query, headers, "values", coalesce(event, ''), coalesce(delivery, ''), verified, coalesce(error, ''), body
+SELECT id, webhook, received_at, method, query, headers, "values", coalesce(event, ''), coalesce(delivery, ''), verified, test, coalesce(error, ''), body
 FROM call WHERE id = @id;
 
 -- call.list
 -- The calls, of the webhook, or the session's webhooks, when there's one,
--- after the call, oldest first, which were accepted, or refused, or both
-SELECT call.id, call.webhook, call.received_at, call.method, call.query, call.headers, call."values", coalesce(call.event, ''), coalesce(call.delivery, ''), call.verified, coalesce(call.error, ''), call.body
+-- after the call, and received since the time, which were accepted, or
+-- refused, or both, in the order, which is ASC, for the oldest first, or
+-- DESC, for the newest
+SELECT call.id, call.webhook, call.received_at, call.method, call.query, call.headers, call."values", coalesce(call.event, ''), coalesce(call.delivery, ''), call.verified, call.test, coalesce(call.error, ''), call.body
 FROM call JOIN webhook ON webhook.id = call.webhook
 WHERE call.id > @after
+  AND (@since = '' OR call.received_at >= @since)
   AND (@webhook = 0 OR call.webhook = @webhook)
   AND (@session = '' OR webhook.session = @session)
   AND (@status = '' OR (@status = 'accepted' AND call.error IS NULL) OR (@status = 'refused' AND call.error IS NOT NULL))
-ORDER BY call.id
+ORDER BY call.id ${order}
+
+-- call.delete
+DELETE FROM call WHERE id = @id
+RETURNING id, webhook, received_at, method, query, headers, "values", coalesce(event, ''), coalesce(delivery, ''), verified, test, coalesce(error, ''), body;
 
 -- call.delete_before
 -- The calls received before the time

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	// Packages
@@ -80,6 +81,17 @@ func Test_Client(t *testing.T) {
 	calls, err := c.ListCalls(ctx, schema.CallListRequest{Webhook: created.ID})
 	require.NoError(t, err)
 	require.Equal(t, uint(2), calls.Count)
+	first := calls.Body[0].ID
+	calls, err = c.ListCalls(ctx, schema.CallListRequest{Webhook: created.ID, Newest: true})
+	require.NoError(t, err)
+	require.Len(t, calls.Body, 2)
+	assert.Equal(t, first, calls.Body[1].ID)
+	calls, err = c.ListCalls(ctx, schema.CallListRequest{Webhook: created.ID, Since: time.Now().Add(-time.Hour)})
+	require.NoError(t, err)
+	assert.Equal(t, uint(2), calls.Count)
+	calls, err = c.ListCalls(ctx, schema.CallListRequest{Webhook: created.ID, Since: time.Now().Add(time.Hour)})
+	require.NoError(t, err)
+	assert.Zero(t, calls.Count)
 	calls, err = c.ListCalls(ctx, schema.CallListRequest{Session: session.String(), Status: schema.CallRefused})
 	require.NoError(t, err)
 	require.Len(t, calls.Body, 1)
@@ -92,6 +104,22 @@ func Test_Client(t *testing.T) {
 	assert.Equal(t, "issues.opened", call.Event)
 	assert.Equal(t, body, string(call.Body))
 	_, err = c.GetCall(ctx, 999)
+	assert.Error(t, err)
+
+	// A test call is added
+	test, err := c.TestCall(ctx, schema.TestRequest{Webhook: created.ID, Signature: schema.SignatureNone})
+	require.NoError(t, err)
+	assert.True(t, test.Test)
+	_, err = c.TestCall(ctx, schema.TestRequest{Webhook: 999})
+	assert.Error(t, err)
+	_, err = c.TestCall(ctx, schema.TestRequest{Webhook: created.ID, Signature: "other"})
+	assert.Error(t, err)
+
+	// A call is deleted
+	deleted, err := c.DeleteCall(ctx, kept)
+	require.NoError(t, err)
+	assert.Equal(t, call, deleted)
+	_, err = c.DeleteCall(ctx, kept)
 	assert.Error(t, err)
 
 	// Deleted

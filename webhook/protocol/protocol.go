@@ -41,6 +41,12 @@ type Protocol interface {
 	// secret, and true, or false, when it isn't one, which is a call
 	Handshake(r *http.Request, secret string) ([]byte, bool)
 
+	// Check returns nil when a call, of the method, and with the headers, is
+	// one which the service makes, such as a POST, with its event, and
+	// ErrBadParameter otherwise. It's whether a call looks like the service's,
+	// which anyone can make one look like, rather than whether it's verified.
+	Check(method string, header http.Header) error
+
 	// Decode returns the body, with its headers, as JSON values, or nil,
 	// when it has none, or isn't text
 	Decode(header http.Header, body []byte) (json.RawMessage, error)
@@ -48,6 +54,15 @@ type Protocol interface {
 	// Verify returns nil when the body was signed with the secret, which
 	// isn't empty, and ErrForbidden otherwise
 	Verify(header http.Header, body []byte, secret string) error
+
+	// Sample returns the headers, and the body, of a call which the service
+	// could make, with the identifier of its delivery, such as for a test. It
+	// isn't signed.
+	Sample(delivery string) (http.Header, []byte)
+
+	// Sign signs the body with the secret, as the service does, in the
+	// headers, so it's verified with it
+	Sign(header http.Header, body []byte, secret string)
 
 	// Identify returns what happened, such as issues.opened, and the
 	// identifier of the delivery, which a delivery which is sent again has

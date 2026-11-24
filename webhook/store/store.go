@@ -82,10 +82,15 @@ type CallStore interface {
 
 	// ListCalls returns the calls, those of the webhook, or of the session's
 	// webhooks, when the request has one, after the call with its serial
-	// number, oldest first, and at most its limit of them, and how many
-	// there are after it, which were accepted, or refused, or both, of the
-	// request's status
+	// number, and received since its time, oldest first, or newest, when
+	// the request says so, and at most its limit of them, and how many
+	// there are, which were accepted, or refused, or both, of the request's
+	// status
 	ListCalls(ctx context.Context, req schema.CallListRequest) (schema.CallList, error)
+
+	// DeleteCall deletes the call with the serial number, and returns it, as
+	// it was, or ErrNotFound when there's none
+	DeleteCall(ctx context.Context, id uint64) (schema.Call, error)
 
 	// DeleteCalls deletes the calls which were received before the time,
 	// and returns how many were deleted

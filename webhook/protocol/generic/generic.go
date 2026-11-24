@@ -40,6 +40,9 @@ func (Protocol) Headers() []string { return nil }
 
 func (Protocol) Handshake(*http.Request, string) ([]byte, bool) { return nil, false }
 
+// Check returns nil, as any call can be of a service without a protocol
+func (Protocol) Check(string, http.Header) error { return nil }
+
 func (Protocol) Decode(header http.Header, body []byte) (json.RawMessage, error) {
 	return common.Decode(header, body)
 }
@@ -55,6 +58,16 @@ func (Protocol) Verify(header http.Header, _ []byte, secret string) error {
 		return llm.ErrForbidden.With("the call's bearer token isn't the webhook's secret")
 	}
 	return nil
+}
+
+// Sample returns a call of JSON
+func (Protocol) Sample(string) (http.Header, []byte) {
+	return common.Sample(nil)
+}
+
+// Sign sets the secret as a bearer token, in the Authorization header
+func (Protocol) Sign(header http.Header, _ []byte, secret string) {
+	header.Set("Authorization", "Bearer "+secret)
 }
 
 func (Protocol) Identify(http.Header, json.RawMessage) (string, string) { return "", "" }

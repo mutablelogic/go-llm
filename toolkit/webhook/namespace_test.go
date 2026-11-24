@@ -65,8 +65,10 @@ func (l *logs) count(text string) int {
 // server is a webhook server, whose API can be made to fail
 type server struct {
 	*httptest.Server
+	store       *store.Store
 	registry    *registry.Registry
 	broadcaster *broadcaster.Broadcaster
+	endpoint    string       // Its public endpoint, or empty, when it has none
 	down        atomic.Bool  // Whether every request fails
 	fail        atomic.Int32 // How many more requests of a call fail
 }
@@ -85,9 +87,9 @@ func newServer(t *testing.T) *server {
 	require.NoError(t, err)
 	router, err := httprouter.NewRouter(ctx, http.NewServeMux(), "/api", "*", "test", "v1")
 	require.NoError(t, err)
-	require.NoError(t, httphandler.RegisterHandlers(r, router, nil))
+	self := &server{store: st, registry: r, broadcaster: b}
+	require.NoError(t, httphandler.RegisterHandlers(r, router, func() string { return self.endpoint }))
 	require.NoError(t, changehandler.RegisterHandlers(b, router))
-	self := &server{registry: r, broadcaster: b}
 	self.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if self.down.Load() || (strings.HasPrefix(req.URL.Path, "/api/webhook/call/") && self.fail.Add(-1) >= 0) {
 			w.WriteHeader(http.StatusBadGateway)
@@ -113,7 +115,12 @@ func (s *server) webhook(t *testing.T, secret string) schema.WebhookToken {
 // call calls the webhook, with the body, as its service does
 func (s *server) call(t *testing.T, w schema.WebhookToken, body string) {
 	t.Helper()
-	_, _ = s.registry.Call(t.Context(), w.Token, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
+	_, _ = s.registry.Call(t.Context(), w.Token, newRequest(body))
+}
+
+// newRequest returns a request, as a service calls a webhook, with the body
+func newRequest(body string) *http.Request {
+	return httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 }
 
 // run runs a namespace of the server, until the test ends, and returns what
@@ -159,7 +166,7 @@ func Test_Namespace(t *testing.T) {
 	_, err = New("not a url")
 	assert.Error(t, err)
 
-	// It's added to a toolkit, with no tools, without the server
+	// It's added to a toolkit, without the server
 	ns, err := New("http://localhost:1/api")
 	require.NoError(t, err)
 	tk, err := toolkit.New(t.Context())
@@ -168,10 +175,11 @@ func Test_Namespace(t *testing.T) {
 	require.NoError(t, tk.Add(ns))
 	assert.Equal(t, "webhook", ns.Name())
 	assert.NotEmpty(t, ns.Description())
-	assert.Empty(t, ns.Tools())
+	require.Len(t, ns.Tools(), 5)
+	assert.Same(t, ns.Tools()[0], ns.Tools()[0], "the same values, so a toolkit can tell which changed")
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	assert.NoError(t, ns.Watch(ctx, make(chan eventschema.Change)))
+	assert.NoError(t, ns.Watch(ctx, make(chan eventschema.Change, 1)))
 	assert.NoError(t, ns.Run(ctx, nil))
 }
 

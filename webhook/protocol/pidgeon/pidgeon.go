@@ -8,8 +8,6 @@
 package pidgeon
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -60,6 +58,9 @@ func (Protocol) Headers() []string { return []string{headerEvent, headerSignatur
 
 func (Protocol) Handshake(*http.Request, string) ([]byte, bool) { return nil, false }
 
+// Check returns nil, as it isn't known which calls Pidgeon doesn't make
+func (Protocol) Check(string, http.Header) error { return nil }
+
 func (Protocol) Decode(header http.Header, body []byte) (json.RawMessage, error) {
 	return common.Decode(header, body)
 }
@@ -91,16 +92,26 @@ func (Protocol) Verify(header http.Header, body []byte, secret string) error {
 	if age := now().Sub(time.Unix(seconds, 0)); age > tolerance || age < -tolerance {
 		return llm.ErrForbidden.Withf("the call's %s is from %s, more than %s from now", headerSignature, time.Unix(seconds, 0).UTC().Format(time.RFC3339), tolerance)
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(timestamp + "."))
-	mac.Write(body)
-	expected := mac.Sum(nil)
+	expected := common.HMAC(secret, []byte(timestamp+"."), body)
 	for _, signature := range signatures {
 		if common.Equal(signature, expected) {
 			return nil
 		}
 	}
 	return llm.ErrForbidden.Withf("the call's %s isn't the body's, with the webhook's secret", headerSignature)
+}
+
+// Sample returns a call with a type
+func (Protocol) Sample(delivery string) (http.Header, []byte) {
+	header, body := common.Sample(map[string]any{"type": "test", "id": delivery})
+	header.Set(headerEvent, "test")
+	return header, body
+}
+
+// Sign sets Pidgeon-Signature, of now
+func (Protocol) Sign(header http.Header, body []byte, secret string) {
+	timestamp := strconv.FormatInt(now().Unix(), 10)
+	header.Set(headerSignature, "t="+timestamp+",v1="+hex.EncodeToString(common.HMAC(secret, []byte(timestamp+"."), body)))
 }
 
 // Identify returns Pidgeon-Event, or the body's type, such as

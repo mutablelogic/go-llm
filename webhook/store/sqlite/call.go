@@ -49,6 +49,18 @@ func (self *Store) GetCall(ctx context.Context, id uint64) (_ webhook.Call, err 
 	return result.Body[0], nil
 }
 
+func (self *Store) DeleteCall(ctx context.Context, id uint64) (_ webhook.Call, err error) {
+	ctx, end := self.span(ctx, "DeleteCall", attribute.Int64("arg.id", int64(id)))
+	defer func() { end(err) }()
+	var result schema.CallList
+	if err := self.conn.Delete(ctx, &result, schema.CallID(id)); errors.Is(err, sqlite.ErrNotFound) {
+		return webhook.Call{}, llm.ErrNotFound.Withf("call %d", id)
+	} else if err != nil {
+		return webhook.Call{}, storeErr(err)
+	}
+	return result.Body[0], nil
+}
+
 func (self *Store) ListCalls(ctx context.Context, req webhook.CallListRequest) (_ webhook.CallList, err error) {
 	ctx, end := self.span(ctx, "ListCalls", attribute.String("arg.req", types.Stringify(req)))
 	defer func() { end(err) }()

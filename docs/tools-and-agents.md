@@ -14,7 +14,7 @@ Tools are what models call, in namespaces, such as `weatherapi:current`. A conve
 | `homeassistant` | Query, search and control smart home devices | `HOMEASSISTANT_URL`, `HOMEASSISTANT_API_KEY` |
 | `ollama` | Web search and fetch, with Ollama's cloud | `OLLAMA_API_KEY` |
 | `deepseek` | Web search and fetch, with DeepSeek's | `DEEPSEEK_API_KEY` |
-| `webhook` | None yet: the calls of a webhook server's webhooks are watched, and logged | `WEBHOOK_ENDPOINT`, such as `http://localhost:8087/api` |
+| `webhook` | Create a webhook, a URL which a service calls, list webhooks and their recent calls, get a call, test a webhook, and delete webhooks or calls. Calls are kept, and logged, but don't come to the conversation yet | `WEBHOOK_ENDPOINT`, such as `http://localhost:8087/api` |
 | `messaging` | Connect, list, send to and disconnect chats, such as on Telegram | `TELEGRAM_BOT_TOKEN` |
 | *a connector's* | The tools of a remote MCP server | A connector |
 

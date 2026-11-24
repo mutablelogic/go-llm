@@ -6,8 +6,6 @@
 package aftership
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -48,6 +46,9 @@ func (Protocol) Headers() []string { return []string{headerSignature} }
 
 func (Protocol) Handshake(*http.Request, string) ([]byte, bool) { return nil, false }
 
+// Check returns nil, as it isn't known which calls AfterShip doesn't make
+func (Protocol) Check(string, http.Header) error { return nil }
+
 func (Protocol) Decode(header http.Header, body []byte) (json.RawMessage, error) {
 	return common.Decode(header, body)
 }
@@ -62,12 +63,20 @@ func (Protocol) Verify(header http.Header, body []byte, secret string) error {
 	if err != nil || len(got) == 0 {
 		return llm.ErrForbidden.Withf("the call has no %s, in base64", headerSignature)
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	if !common.Equal(got, mac.Sum(nil)) {
+	if !common.Equal(got, common.HMAC(secret, body)) {
 		return llm.ErrForbidden.Withf("the call's %s isn't the body's, with the webhook's secret", headerSignature)
 	}
 	return nil
+}
+
+// Sample returns a call with an event
+func (Protocol) Sample(delivery string) (http.Header, []byte) {
+	return common.Sample(map[string]any{"event": "test", "event_id": delivery})
+}
+
+// Sign sets aftership-hmac-sha256
+func (Protocol) Sign(header http.Header, body []byte, secret string) {
+	header.Set(headerSignature, base64.StdEncoding.EncodeToString(common.HMAC(secret, body)))
 }
 
 // Identify returns the body's event, such as tracking_update, and its

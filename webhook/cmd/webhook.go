@@ -19,14 +19,15 @@ import (
 ///////////////////////////////////////////////////////////////////////////////
 // TYPES
 
-// WebhookCommands are the commands which list, get, create, change and
-// delete the webhooks
+// WebhookCommands are the commands which list, get, create, change, delete
+// and test the webhooks
 type WebhookCommands struct {
 	Webhooks      WebhooksCmd      `cmd:"" name:"webhooks" help:"List the webhooks, newest first." group:"WEBHOOK"`
 	Webhook       WebhookCmd       `cmd:"" name:"webhook" help:"Print a webhook." group:"WEBHOOK"`
 	WebhookCreate WebhookCreateCmd `cmd:"" name:"webhook-create" help:"Create a webhook, for a session, and print its URL, which isn't printed again." group:"WEBHOOK"`
 	WebhookUpdate WebhookUpdateCmd `cmd:"" name:"webhook-update" help:"Change a webhook's description, or its secret." group:"WEBHOOK"`
 	WebhookDelete WebhookDeleteCmd `cmd:"" name:"webhook-delete" help:"Delete a webhook, and its calls, so its URL stops working." group:"WEBHOOK"`
+	WebhookTest   WebhookTestCmd   `cmd:"" name:"webhook-test" help:"Make a test call to a webhook, which no service sent, and print it." group:"WEBHOOK"`
 }
 
 type WebhooksCmd struct {
@@ -54,6 +55,11 @@ type WebhookUpdateCmd struct {
 
 type WebhookDeleteCmd struct {
 	ID uint64 `arg:"" name:"id" help:"Serial number of the webhook."`
+}
+
+type WebhookTestCmd struct {
+	ID        uint64 `arg:"" name:"id" help:"Serial number of the webhook."`
+	Signature string `name:"signature" enum:",good,bad,none" default:"" help:"How it's signed: good, with the webhook's secret, bad, with another, or none. Without it, it's good, when the webhook has a secret, or else none."`
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -140,6 +146,18 @@ func (cmd *WebhookDeleteCmd) Run(ctx server.Cmd) error {
 			return err
 		}
 		return printWebhook(*webhook, debug)
+	})
+}
+
+// Run makes a test call to the webhook, and prints it
+func (cmd *WebhookTestCmd) Run(ctx server.Cmd) error {
+	debug := ctx.IsDebug()
+	return withClient(ctx, "webhook.WebhookTestCmd", func(ctx context.Context, client *httpclient.Client) error {
+		call, err := client.TestCall(ctx, schema.TestRequest{Webhook: cmd.ID, Signature: cmd.Signature})
+		if err != nil {
+			return err
+		}
+		return printCall(*call, debug)
 	})
 }
 

@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS call (
   delivery    TEXT,                       -- its delivery's identifier, which a delivery which is sent again has too
   verified    BOOLEAN NOT NULL,
   error       TEXT,                       -- why it was refused, or NULL, when it wasn't
-  body        BLOB                        -- its body, as it was sent
+  body        BLOB,                       -- its body, as it was sent
+  test        BOOLEAN NOT NULL DEFAULT 0  -- whether it's a test call, which no service sent
 );
 
 -- schema.call_webhook

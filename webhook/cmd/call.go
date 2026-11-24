@@ -21,19 +21,26 @@ import (
 
 // CallCommands are the commands which list, and get, the webhooks' calls
 type CallCommands struct {
-	Calls CallsCmd `cmd:"" name:"calls" help:"List the webhooks' calls, oldest first, which were accepted, or refused, or both." group:"WEBHOOK"`
-	Call  CallCmd  `cmd:"" name:"call" help:"Print a call, with its headers, and what it sent." group:"WEBHOOK"`
+	Calls      CallsCmd      `cmd:"" name:"calls" help:"List the webhooks' calls, oldest first, which were accepted, or refused, or both." group:"WEBHOOK"`
+	Call       CallCmd       `cmd:"" name:"call" help:"Print a call, with its headers, and what it sent." group:"WEBHOOK"`
+	CallDelete CallDeleteCmd `cmd:"" name:"call-delete" help:"Delete a call." group:"WEBHOOK"`
 }
 
 type CallsCmd struct {
-	Webhook uint64  `name:"webhook" help:"Serial number of the webhook whose calls are listed."`
-	Session string  `name:"session" help:"Identifier of the session whose webhooks' calls are listed."`
-	Status  string  `name:"status" enum:",accepted,refused" default:"" help:"Which calls are listed: accepted, refused, or both, when it's not set."`
-	After   uint64  `name:"after" help:"Serial number of the call after which they're listed."`
-	Limit   *uint64 `name:"limit" help:"Most calls to list."`
+	Webhook uint64        `name:"webhook" help:"Serial number of the webhook whose calls are listed."`
+	Session string        `name:"session" help:"Identifier of the session whose webhooks' calls are listed."`
+	Status  string        `name:"status" enum:",accepted,refused" default:"" help:"Which calls are listed: accepted, refused, or both, when it's not set."`
+	After   uint64        `name:"after" help:"Serial number of the call after which they're listed."`
+	Since   time.Duration `name:"since" help:"List those received this long ago, at most, such as 1h, or 7d."`
+	Newest  bool          `name:"newest" help:"List the newest first, rather than the oldest."`
+	Limit   *uint64       `name:"limit" help:"Most calls to list."`
 }
 
 type CallCmd struct {
+	ID uint64 `arg:"" name:"id" help:"Serial number of the call."`
+}
+
+type CallDeleteCmd struct {
 	ID uint64 `arg:"" name:"id" help:"Serial number of the call."`
 }
 
@@ -44,8 +51,12 @@ type CallCmd struct {
 func (cmd *CallsCmd) Run(ctx server.Cmd) error {
 	width := ctx.IsTerm()
 	debug := ctx.IsDebug()
+	var since time.Time
+	if cmd.Since > 0 {
+		since = time.Now().Add(-cmd.Since)
+	}
 	return withClient(ctx, "webhook.CallsCmd", func(ctx context.Context, client *httpclient.Client) error {
-		list, err := client.ListCalls(ctx, schema.CallListRequest{Webhook: cmd.Webhook, Session: cmd.Session, Status: cmd.Status, After: cmd.After, Limit: cmd.Limit})
+		list, err := client.ListCalls(ctx, schema.CallListRequest{Webhook: cmd.Webhook, Session: cmd.Session, Status: cmd.Status, After: cmd.After, Since: since, Newest: cmd.Newest, Limit: cmd.Limit})
 		if err != nil {
 			return err
 		} else if debug {
@@ -72,6 +83,18 @@ func (cmd *CallCmd) Run(ctx server.Cmd) error {
 	})
 }
 
+// Run deletes the call, and prints it, as it was
+func (cmd *CallDeleteCmd) Run(ctx server.Cmd) error {
+	debug := ctx.IsDebug()
+	return withClient(ctx, "webhook.CallDeleteCmd", func(ctx context.Context, client *httpclient.Client) error {
+		call, err := client.DeleteCall(ctx, cmd.ID)
+		if err != nil {
+			return err
+		}
+		return printCall(*call, debug)
+	})
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
 
@@ -85,6 +108,9 @@ func printCall(call schema.Call, debug bool) error {
 		return nil
 	}
 	fmt.Printf("%d: %s of webhook %d, received %s\n", call.ID, call.Method, call.Webhook, call.Received.Local().Format(time.DateTime))
+	if call.Test {
+		fmt.Println("Test, which no service sent")
+	}
 	if call.Event != "" {
 		fmt.Printf("Event %s", call.Event)
 		if call.Delivery != "" {
