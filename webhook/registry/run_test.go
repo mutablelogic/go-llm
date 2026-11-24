@@ -113,3 +113,39 @@ func Test_Registry_RunWithoutBroadcaster(t *testing.T) {
 	_, err := registry.New(nil, registry.WithBroadcaster(nil))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
+
+func Test_Registry_RunStops(t *testing.T) {
+	// The broadcaster, and the watch, are cancelled at once, as the server
+	// stops, which isn't an error, whichever stops first
+	for range 200 {
+		ctx, cancel := context.WithCancel(context.Background())
+		b := broadcaster.New()
+		go b.Run(ctx)
+		require.Eventually(t, b.Running, time.Second, time.Millisecond)
+		s, err := store.New(ctx, sqlite.Memory)
+		require.NoError(t, err)
+		r, err := registry.New(s, registry.WithBroadcaster(b))
+		require.NoError(t, err)
+		done := make(chan error, 1)
+		go func() { done <- r.Run(ctx, nil) }()
+		cancel()
+		require.NoError(t, <-done)
+		s.Close()
+	}
+
+	// A broadcaster which stops, when the server hasn't, is
+	running, stop := context.WithCancel(context.Background())
+	b := broadcaster.New()
+	go b.Run(running)
+	require.Eventually(t, b.Running, time.Second, time.Millisecond)
+	s, err := store.New(context.Background(), sqlite.Memory)
+	require.NoError(t, err)
+	defer s.Close()
+	r, err := registry.New(s, registry.WithBroadcaster(b))
+	require.NoError(t, err)
+	done := make(chan error, 1)
+	go func() { done <- r.Run(context.Background(), nil) }()
+	time.Sleep(20 * time.Millisecond)
+	stop()
+	assert.Error(t, <-done)
+}

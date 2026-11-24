@@ -171,11 +171,11 @@ func (r *Registry) readBody(req *http.Request) ([]byte, error) {
 	return body, nil
 }
 
-// refuse keeps the call, which was refused, with why, which isn't a
-// delivery which was sent again, when it's kept, and returns why, whether
-// it's kept, or not
+// refuse keeps the call, which was refused, with why, and whether it was
+// verified, as one which was can be refused, such as when it can't be
+// decoded. It isn't a delivery which was sent again, when it's kept. It
+// returns why, whether it's kept, or not.
 func (r *Registry) refuse(ctx context.Context, call schema.Call, reason error) error {
-	call.Verified = false
 	call.Error = reason.Error()
 	trace.SpanFromContext(ctx).SetAttributes(attribute.String("webhook.refused", call.Error))
 	if _, err := r.store.CreateCall(ctx, call); err != nil {

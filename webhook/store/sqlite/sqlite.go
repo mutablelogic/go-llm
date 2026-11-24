@@ -55,11 +55,10 @@ func New(ctx context.Context, path string, opts ...Opt) (_ *Store, err error) {
 	ctx, end := otel.StartSpan(self.tracer, ctx, "webhook.store.sqlite.New", attribute.String("arg.path", path))
 	defer func() { end(err) }()
 
-	// Open the database
+	// Open the database, whose queries aren't traced, as their spans have
+	// their arguments, which are the webhooks' secrets, and what services
+	// sent
 	var dbopts []sqlite.Opt
-	if self.tracer != nil {
-		dbopts = append(dbopts, sqlite.WithTracer(self.tracer))
-	}
 	if self.broadcaster != nil {
 		dbopts = append(dbopts, sqlite.WithBroadcaster(self.broadcaster, store.WebhookTable, store.CallTable), sqlite.WithSchemaName(store.Schema))
 	}
@@ -94,7 +93,8 @@ func WithBroadcaster(b sqlite.Publisher) Opt {
 	}
 }
 
-// WithTracer traces the store's methods, and their queries
+// WithTracer traces the store's methods, but not their queries, whose
+// arguments include the webhooks' secrets, and what services sent
 func WithTracer(tracer trace.Tracer) Opt {
 	return func(s *Store) error {
 		s.tracer = tracer

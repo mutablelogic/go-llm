@@ -178,3 +178,23 @@ func Test_Registry_CallMaxBody(t *testing.T) {
 	_, err = registry.New(s, registry.WithMaxBody(0))
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 }
+
+func Test_Registry_CallVerifiedButRefused(t *testing.T) {
+	ctx := context.Background()
+	r, _ := newRegistry(t)
+	hook, err := r.CreateWebhook(ctx, schema.WebhookMeta{Session: uuid.New(), Description: "GitHub", Type: "github", Secret: "s3cret"})
+	require.NoError(t, err)
+
+	// A call which is signed, whose body isn't JSON, is refused, and says
+	// that it was verified
+	_, err = r.Call(ctx, hook.Token, githubRequest(`{"action":`, "s3cret", "d1"))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	_, err = r.Call(ctx, hook.Token, githubRequest(`{"action":`, "wrong", "d2"))
+	assert.ErrorIs(t, err, llm.ErrForbidden)
+	list, err := r.ListCalls(ctx, schema.CallListRequest{Status: schema.CallRefused})
+	require.NoError(t, err)
+	require.Len(t, list.Body, 2)
+	assert.True(t, list.Body[0].Verified)
+	assert.Contains(t, list.Body[0].Error, "JSON")
+	assert.False(t, list.Body[1].Verified)
+}

@@ -93,6 +93,8 @@ func printCall(call schema.Call, debug bool) error {
 		fmt.Println()
 	}
 	switch {
+	case call.Error != "" && call.Verified:
+		fmt.Printf("Refused, though verified: %s\n", call.Error)
 	case call.Error != "":
 		fmt.Printf("Refused: %s\n", call.Error)
 	case call.Verified:

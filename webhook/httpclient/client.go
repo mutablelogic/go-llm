@@ -5,9 +5,12 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"slices"
+	"strings"
 
 	// Packages
 	client "github.com/mutablelogic/go-client"
+	llm "github.com/mutablelogic/go-llm"
 	schema "github.com/mutablelogic/go-llm/webhook/schema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 )
@@ -22,13 +25,11 @@ type Client struct {
 }
 
 // hookRequest is a call of a webhook's URL, of its method, with its body,
-// of its content type, which is sent as it is, and its headers, such as a
-// signature
+// of its content type, which is sent as it is
 type hookRequest struct {
 	method      string
 	contentType string
 	body        io.Reader
-	header      http.Header
 }
 
 var _ client.Payload = (*hookRequest)(nil)
@@ -48,7 +49,7 @@ const (
 // New returns a client of the webhooks' API, at the URL, which is the
 // server's API endpoint, such as http://localhost:8084/api, with the options
 func New(url string, opts ...client.ClientOpt) (*Client, error) {
-	c, err := client.New(append(opts, client.OptEndpoint(url))...)
+	c, err := client.New(append(slices.Clone(opts), client.OptEndpoint(url), withHookTransport())...)
 	if err != nil {
 		return nil, err
 	}
@@ -143,17 +144,21 @@ func (c *Client) GetCall(ctx context.Context, id uint64) (*schema.Call, error) {
 // Hook calls the URL of the webhook with the token, as its service does,
 // with the method, the body, of its content type, which is sent as it is,
 // and the headers, such as a signature, and returns the response: the call
-// which was kept, or whether it was a delivery which was sent again
+// which was kept, or whether it was a delivery which was sent again. The
+// token isn't in the client's log, its traces, nor its errors.
 func (c *Client) Hook(ctx context.Context, token, method, contentType string, body io.Reader, header http.Header) (*schema.HookResponse, error) {
+	if strings.TrimSpace(token) == "" {
+		return nil, llm.ErrBadParameter.With("missing webhook token")
+	}
 	var response schema.HookResponse
-	req := &hookRequest{method: method, contentType: contentType, body: body, header: header}
-	opts := []client.RequestOpt{client.OptPath(hookPath, token)}
+	req := &hookRequest{method: method, contentType: contentType, body: body}
+	opts := []client.RequestOpt{client.OptPath(hookPath, tokenPlaceholder)}
 	for name, values := range header {
 		for _, value := range values {
 			opts = append(opts, client.OptReqHeader(name, value))
 		}
 	}
-	if err := c.DoWithContext(ctx, req, &response, opts...); err != nil {
+	if err := c.DoWithContext(withToken(ctx, token), req, &response, opts...); err != nil {
 		return nil, err
 	}
 	return &response, nil

@@ -45,13 +45,13 @@ func (Protocol) Decode(header http.Header, body []byte) (json.RawMessage, error)
 }
 
 // Verify returns nil when the call has the secret as a bearer token, in its
-// Authorization header
+// Authorization header, whose scheme is of any case
 func (Protocol) Verify(header http.Header, _ []byte, secret string) error {
 	if secret == "" {
 		return common.NoSecret()
 	}
-	token, ok := strings.CutPrefix(header.Get("Authorization"), "Bearer ")
-	if !ok || !common.EqualString(strings.TrimSpace(token), secret) {
+	scheme, token, ok := strings.Cut(strings.TrimSpace(header.Get("Authorization")), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || !common.EqualString(strings.TrimSpace(token), secret) {
 		return llm.ErrForbidden.With("the call's bearer token isn't the webhook's secret")
 	}
 	return nil

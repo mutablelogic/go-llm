@@ -17,6 +17,8 @@ import (
 	sqlite "github.com/mutablelogic/go-sqlite"
 	assert "github.com/stretchr/testify/assert"
 	require "github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	tracetest "go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func newStore(t *testing.T) *store.Store {
@@ -230,4 +232,33 @@ func callIDs(calls []webhook.Call) []uint64 {
 		result = append(result, c.ID)
 	}
 	return result
+}
+
+func Test_Store_SecretsNotTraced(t *testing.T) {
+	ctx := context.Background()
+	recorder := tracetest.NewSpanRecorder()
+	tracer := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)).Tracer("test")
+	s, err := store.New(ctx, sqlite.Memory, store.WithTracer(tracer))
+	require.NoError(t, err)
+	defer s.Close()
+
+	// The store's methods are traced, without a webhook's secret, its
+	// token's hash, or what a service sent
+	w, err := s.CreateWebhook(ctx, webhook.WebhookMeta{Session: uuid.New(), Description: "GitHub", Secret: "s3cretONE"}, []byte("s3cretHASH"))
+	require.NoError(t, err)
+	_, err = s.UpdateWebhook(ctx, w.ID, webhook.WebhookRequest{Secret: types.Ptr("s3cretTWO")})
+	require.NoError(t, err)
+	_, err = s.GetWebhookByHash(ctx, []byte("s3cretHASH"))
+	require.NoError(t, err)
+	_, err = s.CreateCall(ctx, webhook.Call{Webhook: w.ID, Method: "POST", Query: url.Values{"q": {"s3cretQUERY"}}, Headers: map[string]string{"X": "s3cretHEADER"}, Values: json.RawMessage(`"s3cretBODY"`), Body: []byte("s3cretBODY")})
+	require.NoError(t, err)
+	var names []string
+	for _, span := range recorder.Ended() {
+		names = append(names, span.Name())
+		for _, attr := range span.Attributes() {
+			assert.NotContains(t, attr.Value.Emit(), "s3cret", span.Name()+" "+string(attr.Key))
+		}
+	}
+	assert.Contains(t, names, "webhook.store.sqlite.CreateWebhook")
+	assert.Contains(t, names, "webhook.store.sqlite.CreateCall")
 }

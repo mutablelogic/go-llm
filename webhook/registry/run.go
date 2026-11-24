@@ -39,12 +39,12 @@ func (r *Registry) Run(ctx context.Context, logger *slog.Logger) error {
 	changes := make(chan eventschema.Change, eventBuffer)
 	done, err := r.broadcaster.Watch(ctx, eventschema.ChangeFilter{Schema: store.Schema}, changes)
 	if err != nil {
-		return err
+		return stopped(ctx, err)
 	}
 	for {
 		select {
 		case err := <-done:
-			return err
+			return stopped(ctx, err)
 		case change := <-changes:
 			r.log(ctx, logger, change)
 		}
@@ -95,6 +95,16 @@ func (r *Registry) log(ctx context.Context, logger *slog.Logger, change eventsch
 
 ///////////////////////////////////////////////////////////////////////////////
 // PRIVATE FUNCTIONS
+
+// stopped returns the error of a watch which ended, or nil, when the context
+// is cancelled, as the broadcaster can stop running at the same time, when
+// the server stops, whose error the watch can end with
+func stopped(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return nil
+	}
+	return err
+}
 
 // actionName returns what happened to a webhook, such as created
 func actionName(action eventschema.ChangeAction) string {
