@@ -134,6 +134,21 @@ func Test_List(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "verified", result.Calls[0].Signature)
 
+	// Every webhook, of more than the server lists at once
+	for range 110 {
+		newWebhook(t, s, session)
+	}
+	result, _, err = call(ctx, `{}`)
+	require.NoError(t, err)
+	assert.Equal(t, uint(112), result.WebhooksCount)
+	require.Len(t, result.Webhooks, 112)
+	seen := map[uint64]bool{}
+	for _, webhook := range result.Webhooks {
+		seen[webhook.ID] = true
+	}
+	assert.Len(t, seen, 112)
+	assert.Equal(t, a.ID, result.Webhooks[111].ID)
+
 	// Not without a session, or when the server can't be reached
 	_, _, err = call(t.Context(), `{}`)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)

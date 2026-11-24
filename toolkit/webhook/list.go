@@ -118,13 +118,18 @@ func (t *list) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		result.WebhooksCount, result.Webhooks = 1, append(result.Webhooks, newWebhookOutput(*webhook))
 	} else {
 		toolkit.Logf(ctx, "Looking at the webhooks")
-		webhooks, err := t.client.ListWebhooks(ctx, schema.WebhookListRequest{Session: session.String()})
-		if err != nil {
-			return nil, err
-		}
-		result.WebhooksCount = webhooks.Count
-		for _, webhook := range webhooks.Body {
-			result.Webhooks = append(result.Webhooks, newWebhookOutput(webhook))
+		for {
+			webhooks, err := t.client.ListWebhooks(ctx, schema.WebhookListRequest{Session: session.String(), Offset: uint64(len(result.Webhooks))})
+			if err != nil {
+				return nil, err
+			}
+			result.WebhooksCount = webhooks.Count
+			for _, webhook := range webhooks.Body {
+				result.Webhooks = append(result.Webhooks, newWebhookOutput(webhook))
+			}
+			if len(webhooks.Body) == 0 || uint(len(result.Webhooks)) >= webhooks.Count {
+				break
+			}
 		}
 	}
 
@@ -161,11 +166,11 @@ func newCallOutput(call schema.Call) callOutput {
 		ID:        call.ID,
 		Webhook:   call.Webhook,
 		Received:  call.Received.UTC().Format(time.RFC3339),
-		Event:     call.Event,
+		Event:     hideToken(call.Event),
 		Status:    call.Status(),
 		Test:      call.Test,
 		Signature: signature(call),
-		Error:     call.Error,
+		Error:     hideToken(call.Error),
 	}
 }
 
