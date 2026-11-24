@@ -60,6 +60,9 @@ services:
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       HOMEASSISTANT_URL: ${HOMEASSISTANT_URL:-}
       HOMEASSISTANT_API_KEY: ${HOMEASSISTANT_API_KEY:-}
+      # The endpoint of a webhook server's API, such as
+      # http://webhook:8084/api, whose calls are watched
+      WEBHOOK_ENDPOINT: ${WEBHOOK_ENDPOINT:-}
       # Messaging, whose chats are connected to conversations, such as a
       # Telegram bot's, from BotFather
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}

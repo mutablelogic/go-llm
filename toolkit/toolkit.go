@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"maps"
 	"reflect"
 	"slices"
@@ -21,6 +22,7 @@ import (
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 	types "github.com/mutablelogic/go-server/pkg/types"
 	attribute "go.opentelemetry.io/otel/attribute"
+	errgroup "golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -80,6 +82,13 @@ type Namespace interface {
 	// does this for a namespace whose tools change, and WatchTools for one
 	// whose tools don't.
 	Watch(ctx context.Context, ch chan<- eventschema.Change) error
+}
+
+// Runner is a namespace which runs, such as to fire what's due, or to watch
+// for what happens, until the context is cancelled, when it returns nil. It
+// logs to the logger, when there is one. Toolkit.Run runs it.
+type Runner interface {
+	Run(ctx context.Context, logger *slog.Logger) error
 }
 
 // ToolPrompter is a namespace whose system prompt depends on which of its
@@ -242,6 +251,24 @@ func (self *Toolkit) Remove(ns Namespace) error {
 		self.publish(eventschema.ChangeDelete, canonical)
 	}
 	return nil
+}
+
+// Run runs the namespaces which are Runners, of those which have been added,
+// but not any which are added later, until the context is cancelled, and
+// they have all returned. When one returns an error, the others are
+// cancelled, and it's returned.
+func (self *Toolkit) Run(ctx context.Context, logger *slog.Logger) error {
+	group, ctx := errgroup.WithContext(ctx)
+	self.mu.RLock()
+	for _, ns := range self.namespaces {
+		if runner, ok := ns.(Runner); ok {
+			group.Go(func() error {
+				return runner.Run(ctx, logger)
+			})
+		}
+	}
+	self.mu.RUnlock()
+	return group.Wait()
 }
 
 // Close stops watching the namespaces' tools, which are still read as the

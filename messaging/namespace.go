@@ -51,6 +51,7 @@ var _ llm.Tool = (*listTool)(nil)
 var _ llm.Tool = (*sendTool)(nil)
 var _ llm.Tool = (*disconnectTool)(nil)
 var _ toolkit.Namespace = (*Messaging)(nil)
+var _ toolkit.Runner = (*Messaging)(nil)
 var _ toolkit.SessionPrompter = (*Messaging)(nil)
 
 type connectInput struct {
