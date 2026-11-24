@@ -13,7 +13,8 @@ require (
 	github.com/mutablelogic/go-client v1.5.1
 	github.com/mutablelogic/go-filer v0.3.2
 	github.com/mutablelogic/go-metadata v1.1.2
-	github.com/mutablelogic/go-server v1.8.34
+	github.com/mutablelogic/go-server v1.8.35
+	github.com/mutablelogic/go-sqlite v1.1.4
 	github.com/stretchr/testify v1.12.1
 	github.com/yuin/goldmark v1.8.6
 	go.opentelemetry.io/otel v1.47.0
@@ -64,6 +65,9 @@ require (
 	github.com/muesli/reflow v0.3.0 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/mutablelogic/go-tokenizer v0.0.3 // indirect
+	github.com/ncruces/go-sqlite3 v0.37.0 // indirect
+	github.com/ncruces/go-sqlite3-wasm/v6 v6.5.35401 // indirect
+	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/pdfcpu/pdfcpu v0.16.3 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/richardlehane/mscfb v1.0.9 // indirect

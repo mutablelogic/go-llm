@@ -21,6 +21,13 @@ VERSION ?= $(shell git describe --tags --always | sed 's/^v//')
 # API, or an Ollama server
 TEST_FLAGS ?=
 
+# Set the store of the webhook command: sqlite, a database in the user's data
+# folder, or memory, which isn't kept when it stops
+WEBHOOK_BACKEND ?= sqlite
+ifeq ($(filter $(WEBHOOK_BACKEND),sqlite memory),)
+$(error WEBHOOK_BACKEND is sqlite or memory, not "$(WEBHOOK_BACKEND)")
+endif
+
 # Set build flags
 VERSION_PKG = github.com/mutablelogic/go-server/pkg/version
 BUILD_LD_FLAGS += -X $(VERSION_PKG).GitTag=$(shell git describe --tags --always)
@@ -37,13 +44,21 @@ all: build
 # BUILD
 
 # Build the commands in the cmd directory, with the web UI, which the server
-# embeds with the "frontend" tag, once it's built
+# embeds with the "frontend" tag, once it's built, and the webhook command's
+# store, of WEBHOOK_BACKEND
 .PHONY: build
 build: tidy $(CMD_DIR)
 
 $(CMD_DIR): go-dep mkdir tidy
 	@echo Build $(notdir $@) GOOS=${OS} GOARCH=${ARCH}
-	@GOWORK=${GOWORK} GOOS=${OS} GOARCH=${ARCH} ${GO} build -tags frontend ${BUILD_FLAGS} -o ${BUILD_DIR}/$(notdir $@) ./$@
+	@GOWORK=${GOWORK} GOOS=${OS} GOARCH=${ARCH} ${GO} build -tags frontend,webhook_${WEBHOOK_BACKEND} ${BUILD_FLAGS} -o ${BUILD_DIR}/$(notdir $@) ./$@
+
+# Build the webhook command alone, without the web UI, which it doesn't
+# have, with the store of WEBHOOK_BACKEND, such as for its image
+.PHONY: webhook
+webhook: go-dep mkdir
+	@echo Build webhook GOOS=${OS} GOARCH=${ARCH} WEBHOOK_BACKEND=${WEBHOOK_BACKEND}
+	@GOWORK=${GOWORK} GOOS=${OS} GOARCH=${ARCH} ${GO} build -tags webhook_${WEBHOOK_BACKEND} ${BUILD_FLAGS} -o ${BUILD_DIR}/webhook ./cmd/webhook
 
 # Build the web UI into build/frontend, which the server embeds, with its
 # dependencies, which are installed from package-lock.json, once it's type
@@ -65,13 +80,24 @@ client: go-dep mkdir
 
 # Build the server's image, for Linux, with the web UI, tagged with the
 # version, for the architecture, such as llm:1.2.3-linux-arm64
+# Build the images: llm, of docker/Dockerfile.llm, and webhook, of
+# docker/Dockerfile.webhook
 .PHONY: docker
-docker: docker-dep
+docker: docker-llm docker-webhook
+
+.PHONY: docker-llm
+docker-llm: docker-dep
 	@echo Build docker image llm:${VERSION}-linux-${ARCH}
 	@test -n "$${GITHUB_TOKEN}" || (echo "Missing GITHUB_TOKEN, which needs read:packages to install @mutablelogic packages from GitHub Packages" && exit 1)
 	@${DOCKER} build --build-arg OS=linux --build-arg ARCH=${ARCH} --build-arg SOURCE=https://github.com/mutablelogic/go-llm \
 		--secret id=github_token,env=GITHUB_TOKEN \
-		-f docker/Dockerfile -t llm:${VERSION}-linux-${ARCH} .
+		-f docker/Dockerfile.llm -t llm:${VERSION}-linux-${ARCH} .
+
+.PHONY: docker-webhook
+docker-webhook: docker-dep
+	@echo Build docker image webhook:${VERSION}-linux-${ARCH}
+	@${DOCKER} build --build-arg OS=linux --build-arg ARCH=${ARCH} --build-arg SOURCE=https://github.com/mutablelogic/go-llm \
+		-f docker/Dockerfile.webhook -t webhook:${VERSION}-linux-${ARCH} .
 
 ###############################################################################
 # TEST

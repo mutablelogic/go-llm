@@ -27,7 +27,7 @@ services:
     image: ghcr.io/mutablelogic/llm:${LLM_VERSION:-latest}
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.llm
     restart: unless-stopped
     ports:
       # On localhost only, as the server has no authentication yet, unless
