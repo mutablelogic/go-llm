@@ -77,6 +77,15 @@ func Test_Create(t *testing.T) {
 	_, err = s.registry.Call(t.Context(), strings.TrimPrefix(created.URL, "https://webhook.example.com/api/hook/"), newRequest("x"))
 	assert.NoError(t, err)
 
+	// One which the person registers, who's given its URL
+	created, _, err = call(inSession(t.Context(), session), `{"description":"Shipments","type":"aftership"}`)
+	require.NoError(t, err)
+	assert.NotEmpty(t, created.URL)
+	assert.Contains(t, created.Note, "give them the URL")
+	assert.Contains(t, created.Note, "https://admin.aftership.com/tracking/notifications/webhooks")
+	assert.Contains(t, created.Note, "webhook:update")
+	assert.NotContains(t, created.Note, "Don't give it to the person")
+
 	// With a secret, which its calls are verified with, and which isn't
 	// returned, or logged
 	var log strings.Builder
@@ -102,7 +111,7 @@ func Test_Create(t *testing.T) {
 	assert.Contains(t, created.Note, "/hook/")
 	list, err := s.registry.ListWebhooks(t.Context(), schema.WebhookListRequest{Session: session.String()})
 	require.NoError(t, err)
-	assert.Equal(t, uint(4), list.Count)
+	assert.Equal(t, uint(5), list.Count)
 
 	// Not without a session, such as when it's called by the API, nor for
 	// another session, which isn't its to choose
