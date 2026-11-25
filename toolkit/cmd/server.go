@@ -67,6 +67,10 @@ const (
 	// endpoint of the webhook server's API, such as
 	// http://localhost:8087/api, which adds the webhook namespace
 	WebhookEndpointCredential = "WEBHOOK_ENDPOINT"
+
+	// sourceURL is where the application is from, which its User-Agent has,
+	// after its name, and version, as some services need to know what it is
+	sourceURL = "https://github.com/mutablelogic/go-llm"
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -87,7 +91,7 @@ func (flags Flags) WithToolkit(ctx server.Cmd, srv *servercmd.RunServer, fn func
 	if version := ctx.Version(); version != "" {
 		agent += "/" + version
 	}
-	clientOpts = append(clientOpts, client.OptUserAgent(agent))
+	clientOpts = append(clientOpts, client.OptUserAgent(agent+" (+"+sourceURL+")"))
 
 	// The server's options come first, so the options are used instead
 	opts = append([]toolkit.Opt{
