@@ -11,14 +11,16 @@ if [ -n "${UID}" ] && [ "${UID}" != "$(id -u webhook)" ]; then
     usermod -o -u "${UID}" webhook
 fi
 
-# The server keeps its data in /data, which is the webhook user's, so a
-# volume, or a directory which is mounted, which isn't, such as a new one,
-# is made the webhook user's
+# The server keeps its data in /data/webhook, which is the webhook user's, as
+# is /data, so a volume, or a directory, which is mounted as either, and isn't,
+# such as a new one, is made the webhook user's
 DATA="${XDG_DATA_HOME:-/data}"
 mkdir -p "${DATA}"
-if [ "$(stat -c %u "${DATA}")" != "$(id -u webhook)" ] || [ "$(stat -c %g "${DATA}")" != "$(id -g webhook)" ]; then
-    chown -R webhook:webhook "${DATA}"
-fi
+for DIR in "${DATA}" "${DATA}/webhook"; do
+    if [ -d "${DIR}" ] && { [ "$(stat -c %u "${DIR}")" != "$(id -u webhook)" ] || [ "$(stat -c %g "${DIR}")" != "$(id -g webhook)" ]; }; then
+        chown -R webhook:webhook "${DIR}"
+    fi
+done
 
 # Run the server, by default, or the command, as the webhook user
 if [ $# -eq 0 ]; then
