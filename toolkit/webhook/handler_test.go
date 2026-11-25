@@ -309,3 +309,11 @@ func Test_Input(t *testing.T) {
 	assert.Contains(t, string(data), `"query":{"q":["short"]}`)
 	assert.Greater(t, len(data), sentTokens*tokenBytes*8/10)
 }
+
+func Test_Detail(t *testing.T) {
+	var calls Calls
+	for _, want := range []string{"", "It's of webhook call 1.", "It's of webhook calls 1 and 2.", "It's of webhook calls 1, 2 and 3."} {
+		assert.Equal(t, want, calls.Detail())
+		calls.Calls = append(calls.Calls, schema.Call{ID: uint64(len(calls.Calls) + 1), Event: "what was sent"})
+	}
+}

@@ -56,8 +56,12 @@ system: |
   Then write what the person is told, as one short message which covers
   the calls which matter, addressed to them, in their language, with the
   information itself, rather than a description of what you did. Put calls
-  about the same thing together. If you can't find out what you need, say
-  so plainly, rather than guessing.
+  about the same thing together. When more than three things happened,
+  start with what matters most, in a sentence or two, and then list the
+  rest, with a line each, which says which webhook it's of, what happened,
+  and whether it needs them. Don't give the calls' ids, as what sent the
+  message is recorded with it. If you can't find out what you need, say so
+  plainly, rather than guessing.
 
   Then say how important it is, as the most important of the calls:
   - "alert" when acting late would cost them something, such as something

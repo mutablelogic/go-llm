@@ -159,20 +159,23 @@ func (r *Registry) deliver(ctx context.Context, event schema.Event, since time.T
 
 // eventOrigin returns what the system says of the event's message, which is
 // the task which sent it, and why it ran, when that's known: on schedule, as
-// a heartbeat, or as its source triggered it
+// a heartbeat, or as its source triggered it, and the event's detail, when it
+// has one
 func eventOrigin(event schema.Event) string {
 	task := "a task"
 	if title := strings.TrimSpace(event.Title); title != "" {
 		task = fmt.Sprintf("the task %q", title)
 	}
-	switch source := strings.TrimSpace(event.Source); {
-	case source != "":
-		return fmt.Sprintf("Sent by %s, which %s triggered.", task, source)
-	case event.Heartbeat:
-		return "Sent by " + task + ", which ran on schedule."
-	default:
-		return "Sent by " + task + "."
+	origin := "Sent by " + task + "."
+	if source := strings.TrimSpace(event.Source); source != "" {
+		origin = fmt.Sprintf("Sent by %s, which %s triggered.", task, source)
+	} else if event.Heartbeat {
+		origin = "Sent by " + task + ", which ran on schedule."
 	}
+	if detail := strings.TrimSpace(event.Detail); detail != "" {
+		origin += " " + detail
+	}
+	return origin
 }
 
 // deliverInBackground delivers the event's outcome, in a goroutine of its

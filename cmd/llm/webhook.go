@@ -44,6 +44,7 @@ func handleWebhooks(events *atomic.Pointer[registry.Registry], details func() me
 			Without: []string{heartbeat.Name, webhook.Name},
 			Title:   "Webhooks",
 			Source:  webhook.Name,
+			Detail:  calls.Detail(),
 			Fired:   now,
 		}, nil)
 		if err != nil {

@@ -369,5 +369,6 @@ func Test_EventOrigin(t *testing.T) {
 	assert.Equal(t, `Sent by the task "Morning briefing", which ran on schedule.`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "Morning briefing", Heartbeat: true}}))
 	assert.Equal(t, `Sent by the task "New mail", which inbox triggered.`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "New mail", Source: "inbox"}}))
 	assert.Equal(t, `Sent by the task "Event".`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "Event"}}), "one triggered without a source doesn't say why it ran")
+	assert.Equal(t, `Sent by the task "Webhooks", which webhook triggered. It's of webhook call 12.`, registry.EventOrigin(schema.Event{EventMeta: schema.EventMeta{Title: "Webhooks", Source: "webhook", Detail: " It's of webhook call 12. "}}))
 	assert.Equal(t, "Sent by a task.", registry.EventOrigin(schema.Event{}))
 }

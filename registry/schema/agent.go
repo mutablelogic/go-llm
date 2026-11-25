@@ -715,6 +715,7 @@ type RunEventRequest struct {
 	// outcome has, when it's stored
 	Title     string    `json:"title,omitempty" help:"What the event is for" example:"Morning briefing" optional:""`
 	Source    string    `json:"source,omitempty" help:"What the event is from, such as webhook, when it isn't a heartbeat" example:"webhook" optional:""`
+	Detail    string    `json:"detail,omitempty" help:"What the system says of the event, to the session's model, rather than the person, such as which webhook calls it's of" example:"It's of webhook call 12." optional:""`
 	Scheduled time.Time `json:"scheduled,omitzero" help:"When the event was due" optional:""`
 	Fired     time.Time `json:"fired,omitzero" help:"When the event fired" optional:""`
 	Heartbeat bool      `json:"heartbeat,omitempty" help:"Whether the event is a heartbeat which fired, on its schedule, which its outcome says" optional:""`

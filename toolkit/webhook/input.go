@@ -3,6 +3,7 @@ package webhook
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -111,6 +112,24 @@ func (c *Calls) Input(ctx context.Context, lines []string) (json.RawMessage, err
 		input.Calls = append(input.Calls, result)
 	}
 	return json.Marshal(input)
+}
+
+// Detail returns what the system says of the calls, to the session's model,
+// which is their serial numbers, such as It's of webhook calls 12 and 13. It
+// has nothing which was sent.
+func (c *Calls) Detail() string {
+	var ids []string
+	for _, id := range c.ids() {
+		ids = append(ids, strconv.FormatUint(id, 10))
+	}
+	switch n := len(ids); n {
+	case 0:
+		return ""
+	case 1:
+		return "It's of webhook call " + ids[0] + "."
+	default:
+		return "It's of webhook calls " + strings.Join(ids[:n-1], ", ") + " and " + ids[n-1] + "."
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
