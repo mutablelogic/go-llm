@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
@@ -180,15 +179,10 @@ func Test_Policy(t *testing.T) {
 	ctx := t.Context()
 	reverse := func(lat float64) *httpclient.ReverseRequest { return &httpclient.ReverseRequest{Lat: lat, Lon: 13} }
 
-	// It says what it is, or what the application is
-	s, c := newServer(t)
+	// It says what the application is
+	s, c := newServer(t, client.OptUserAgent("my-app/1.0"))
 	s.body = berlin
 	_, err := c.Reverse(ctx, reverse(1))
-	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(s.header.Get("User-Agent"), "go-llm "), s.header.Get("User-Agent"))
-	s, c = newServer(t, client.OptUserAgent("my-app/1.0"))
-	s.body = berlin
-	_, err = c.Reverse(ctx, reverse(1))
 	require.NoError(t, err)
 	assert.Equal(t, "my-app/1.0", s.header.Get("User-Agent"))
 

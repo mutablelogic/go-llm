@@ -7,6 +7,7 @@ import (
 	"time"
 
 	// Packages
+	client "github.com/mutablelogic/go-client"
 	llm "github.com/mutablelogic/go-llm"
 	httpclient "github.com/mutablelogic/go-llm/toolkit/openstreetmap/httpclient"
 	assert "github.com/stretchr/testify/assert"
@@ -27,7 +28,7 @@ func Test_Live(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	c, err := httpclient.New(endpoint)
+	c, err := httpclient.New(endpoint, client.OptUserAgent("go-llm-test (+https://github.com/mutablelogic/go-llm)"))
 	require.NoError(t, err)
 
 	// Searched for, and looked up again

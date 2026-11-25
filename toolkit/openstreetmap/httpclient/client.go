@@ -56,10 +56,6 @@ const (
 	// Attribution is who the data is of, which has to be said where it's shown
 	Attribution = "© OpenStreetMap contributors, https://www.openstreetmap.org/copyright"
 
-	// userAgent is the application, when it isn't set, as the public server
-	// refuses the User-Agent of a library
-	userAgent = "go-llm (+https://github.com/mutablelogic/go-llm)"
-
 	// requestsPerSecond is the most requests a second of the public server
 	requestsPerSecond = 1
 
@@ -75,20 +71,20 @@ const (
 // LIFECYCLE
 
 // New returns a client for the Nominatim server at the endpoint, such as
-// PublicEndpoint, whose usage policy has to be followed, or one's own. It makes
-// at most one request a second, which client.OptRateLimit replaces, for one's
-// own server, and says it's go-llm, which client.OptUserAgent replaces, with
-// what the application is. Results are kept for a day, so they aren't asked for
-// again. What's asked for, such as where someone is, isn't in the client's log,
-// its traces, nor its errors.
+// PublicEndpoint, whose usage policy has to be followed, or one's own. The
+// application says what it is with client.OptUserAgent, as the public server
+// refuses the User-Agent of a library. The client makes at most one request a
+// second, which client.OptRateLimit replaces, for one's own server, and keeps
+// results for a day, so they aren't asked for again. What's asked for, such as
+// where someone is, isn't in its log, its traces, nor its errors.
 func New(endpoint string, opts ...client.ClientOpt) (*Client, error) {
 	if endpoint = strings.TrimSpace(endpoint); endpoint == "" {
 		return nil, llm.ErrBadParameter.With("missing endpoint of a Nominatim server")
 	}
 
-	// The defaults are first, so they can be replaced, and the query is added
+	// The rate limit is first, so it can be replaced, and the query is added
 	// last, within whatever logs, or traces, the request
-	opts = append([]client.ClientOpt{client.OptUserAgent(userAgent), client.OptRateLimit(requestsPerSecond)}, opts...)
+	opts = append([]client.ClientOpt{client.OptRateLimit(requestsPerSecond)}, opts...)
 	opts = append(opts, client.OptEndpoint(endpoint), client.OptTransport(newQueryTransport))
 	c, err := client.New(opts...)
 	if err != nil {
