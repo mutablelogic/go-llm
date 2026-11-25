@@ -28,6 +28,10 @@ const (
 	// Name is the protocol's name
 	Name = "aftership"
 
+	// RegisterPage is where a person registers a webhook's URL, and is given
+	// its secret
+	RegisterPage = "https://admin.aftership.com/tracking/notifications/webhooks"
+
 	headerSignature = "Aftership-Hmac-Sha256"
 )
 

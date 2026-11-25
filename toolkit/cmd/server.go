@@ -9,6 +9,7 @@ import (
 	// Packages
 	client "github.com/mutablelogic/go-client"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
+	aftership "github.com/mutablelogic/go-llm/toolkit/aftership"
 	deepseek "github.com/mutablelogic/go-llm/toolkit/deepseek"
 	homeassistant "github.com/mutablelogic/go-llm/toolkit/homeassistant"
 	httphandler "github.com/mutablelogic/go-llm/toolkit/httphandler"
@@ -57,6 +58,10 @@ const (
 	// HomeAssistantURLCredential is the key of the credential holding the URL
 	// of the Home Assistant server, such as http://homeassistant.local:8123
 	HomeAssistantURLCredential = "HOMEASSISTANT_URL"
+
+	// AfterShipCredential is the key of the credential holding the AfterShip
+	// API key, which adds the tools which track shipments
+	AfterShipCredential = "AFTERSHIP_API_KEY"
 
 	// WebhookEndpointCredential is the key of the credential holding the
 	// endpoint of the webhook server's API, such as
@@ -124,6 +129,7 @@ func AddTools(ctx server.Cmd, tools *toolkit.Toolkit) error {
 		addNamespace(ctx, tools, ollama.Name, OllamaCredential, ollama.New),
 		addNamespace(ctx, tools, deepseek.Name, DeepSeekCredential, deepseek.New),
 		addNamespace(ctx, tools, newsapi.Name, NewsAPICredential, newsapi.New),
+		addNamespace(ctx, tools, aftership.Name, AfterShipCredential, aftership.New),
 		addHomeAssistantTools(ctx, tools),
 		addWebhook(ctx, tools),
 	)

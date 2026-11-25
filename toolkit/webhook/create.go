@@ -9,6 +9,7 @@ import (
 	llm "github.com/mutablelogic/go-llm"
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	httpclient "github.com/mutablelogic/go-llm/webhook/httpclient"
+	aftership "github.com/mutablelogic/go-llm/webhook/protocol/aftership"
 	schema "github.com/mutablelogic/go-llm/webhook/schema"
 	jsonschema "github.com/mutablelogic/go-server/pkg/jsonschema"
 )
@@ -41,12 +42,21 @@ type createOutput struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// GLOBALS
+
+// registerPages are where the person registers the URL, of the types of
+// webhook whose services have no tool for it, so they're given it
+var registerPages = map[string]string{
+	aftership.Name: aftership.RegisterPage,
+}
+
+///////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 func (*create) Name() string { return "create" }
 
 func (*create) Description() string {
-	return "Creates a webhook for this conversation, which is a URL that an external service calls when something happens, such as GitHub, when an issue is opened, and returns its URL, for you to register with the service, with the service's own tools. Only create one when you have a tool which registers it. Don't give the URL to the person, as whoever has it can call the webhook. What it's sent is kept, but doesn't come to this conversation yet, so don't say that you'll be told of it."
+	return "Creates a webhook for this conversation, which is a URL that an external service calls when something happens, such as GitHub, when an issue is opened, and returns its URL, for you to register with the service, with the service's own tools. Only create one when you have a tool which registers it, or it's a service where the person registers it, such as AfterShip, on its website. Only give the URL to the person when they register it, as whoever has it can call the webhook. What it's sent is kept, but doesn't come to this conversation yet, so don't say that you'll be told of it."
 }
 
 func (*create) InputSchema() *jsonschema.Schema {
@@ -72,7 +82,7 @@ func (t *create) Run(ctx context.Context, input json.RawMessage) (any, error) {
 
 	// The token is only returned now, in its URL, when it has one
 	result := createOutput{webhookOutput: newWebhookOutput(webhook.Webhook), URL: webhook.URL}
-	notes := []string{"Register the URL with the service now, as it is, as it can't be seen again. Don't give it to the person, or call it, or fetch it: webhook:test makes a test call."}
+	notes := []string{registerNote(webhook.Type)}
 	if webhook.URL == "" {
 		result.Token = webhook.Token
 		notes = []string{"The webhook server has no public address, so a service on the internet can't call it. Its URL is the server's, then /hook/, and the token, which can't be seen again. Don't give it to the person."}
@@ -81,4 +91,16 @@ func (t *create) Run(ctx context.Context, input json.RawMessage) (any, error) {
 	notes = append(notes, "Its calls are kept, but don't come to this conversation yet.")
 	result.Note = strings.Join(notes, " ")
 	return result, nil
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// PRIVATE FUNCTIONS
+
+// registerNote returns what a model is told to do with the URL, of a webhook
+// of the type, which it registers, or the person does
+func registerNote(name string) string {
+	if page, ok := registerPages[name]; ok {
+		return "Register it with the person, as you can't: give them the URL now, as it is, as it can't be seen again, and ask them to add it at " + page + ", and to keep it to themselves. Ask them for the secret which the page gives, and set it with webhook:update. Don't call the URL, or fetch it: webhook:test makes a test call."
+	}
+	return "Register the URL with the service now, as it is, as it can't be seen again. Don't give it to the person, or call it, or fetch it: webhook:test makes a test call."
 }
