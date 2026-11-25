@@ -28,7 +28,7 @@ var _ llm.Tool = (*create)(nil)
 // createInput is the webhook, but not its session, which is the one the tool
 // is called in, as a model doesn't know it
 type createInput struct {
-	Description string `json:"description" help:"What the webhook is for, in a few words, which says which service calls it, and when, such as GitHub: issues opened on go-llm"`
+	Description string `json:"description" help:"What the webhook is for: which service calls it, and when, and what to do with its calls, which the agent which handles them is told, such as GitHub: issues opened on go-llm. Say the title, and who opened it"`
 	Type        string `json:"type,omitempty" enum:"aftership,generic,github,pidgeon" help:"The service which calls it, which says how its calls are verified, and what they are: aftership, github or pidgeon, or generic, for any other, which it is without one" optional:""`
 	Secret      string `json:"secret,omitempty" help:"The secret which the service signs its calls with, which is optional. The service needs the same one, so give it when you register the URL. When the service gives its own once the URL is registered, set it then, with webhook:update. Without one, the webhook works, but its calls' signatures aren't checked." optional:""`
 }
@@ -56,7 +56,7 @@ var registerPages = map[string]string{
 func (*create) Name() string { return "create" }
 
 func (*create) Description() string {
-	return "Creates a webhook for this conversation, which is a URL that an external service calls when something happens, such as GitHub, when an issue is opened, and returns its URL, for you to register with the service, with the service's own tools. Only create one when you have a tool which registers it, or it's a service where the person registers it, such as AfterShip, on its website. Only give the URL to the person when they register it, as whoever has it can call the webhook. What it's sent is kept, but doesn't come to this conversation yet, so don't say that you'll be told of it."
+	return "Creates a webhook for this conversation, which is a URL that an external service calls when something happens, such as GitHub, when an issue is opened, and returns its URL, for you to register with the service, with the service's own tools. Only create one when you have a tool which registers it, or it's a service where the person registers it, such as AfterShip, on its website. Only give the URL to the person when they register it, as whoever has it can call the webhook. Its calls are kept, and within a minute, an agent handles them, as its description says, with this conversation's tools, and the person is told of what matters, in this conversation."
 }
 
 func (*create) InputSchema() *jsonschema.Schema {
@@ -88,7 +88,7 @@ func (t *create) Run(ctx context.Context, input json.RawMessage) (any, error) {
 		notes = []string{"The webhook server has no public address, so a service on the internet can't call it. Its URL is the server's, then /hook/, and the token, which can't be seen again. Don't give it to the person."}
 	}
 	notes = append(notes, secretNote(webhook.HasSecret))
-	notes = append(notes, "Its calls are kept, but don't come to this conversation yet.")
+	notes = append(notes, "An agent handles its calls, as its description says, and tells the person, in this conversation.")
 	result.Note = strings.Join(notes, " ")
 	return result, nil
 }

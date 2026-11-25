@@ -129,11 +129,21 @@ func Test_Webhooks(t *testing.T) {
 	assert.Equal(t, uint(1), calls.Count)
 	require.Equal(t, http.StatusOK, server.JSON(t, http.MethodGet, fmt.Sprintf("webhook/call?status=refused&session=%s", session), nil, &calls))
 	assert.Equal(t, uint(1), calls.Count)
-	assert.Equal(t, http.StatusBadRequest, server.JSON(t, http.MethodGet, "webhook/call?status=pending", nil, nil))
+	assert.Equal(t, http.StatusBadRequest, server.JSON(t, http.MethodGet, "webhook/call?status=unknown", nil, nil))
 	var call schema.Call
 	require.Equal(t, http.StatusOK, server.JSON(t, http.MethodGet, fmt.Sprintf("webhook/call/%d", accepted.Call), nil, &call))
 	assert.Equal(t, "d1", call.Delivery)
 	assert.Equal(t, http.StatusNotFound, server.JSON(t, http.MethodGet, "webhook/call/999", nil, nil))
+
+	// Seen, once, so it's no longer pending
+	var seen schema.SeenResponse
+	require.Equal(t, http.StatusOK, server.JSON(t, http.MethodPatch, "webhook/call", schema.SeenRequest{Calls: []uint64{call.ID}}, &seen))
+	assert.Equal(t, uint64(1), seen.Count)
+	require.Equal(t, http.StatusOK, server.JSON(t, http.MethodGet, "webhook/call?status=pending", nil, &calls))
+	assert.Zero(t, calls.Count)
+	require.Equal(t, http.StatusOK, server.JSON(t, http.MethodGet, "webhook/call?status=seen", nil, &calls))
+	assert.Equal(t, uint(1), calls.Count)
+	assert.Equal(t, http.StatusBadRequest, server.JSON(t, http.MethodPatch, "webhook/call", schema.SeenRequest{}, nil))
 
 	// Deleted, so its URL stops working
 	require.Equal(t, http.StatusOK, server.JSON(t, http.MethodDelete, "webhook/"+id, nil, &webhook))

@@ -260,7 +260,7 @@ func TestToolsUnexpanded(t *testing.T) {
 	// "*", or builtin:*, but are tools, which can be named on their own
 	tk, err := toolkit.New(t.Context())
 	require.NoError(t, err)
-	require.NoError(t, tk.Add(toolkit.NewNamespace("builtin", "", echoTool{name: "event"}, echoTool{name: "compact"}, echoTool{name: "translate"})))
+	require.NoError(t, tk.Add(toolkit.NewNamespace("builtin", "", echoTool{name: "event"}, echoTool{name: "compact"}, echoTool{name: "webhook"}, echoTool{name: "translate"})))
 	require.NoError(t, tk.Add(toolkit.NewNamespace("other", "", echoTool{name: "event"})))
 	names := func(patterns ...string) []string {
 		t.Helper()

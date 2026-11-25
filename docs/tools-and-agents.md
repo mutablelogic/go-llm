@@ -15,7 +15,7 @@ Tools are what models call, in namespaces, such as `weatherapi:current`. A conve
 | `ollama` | Web search and fetch, with Ollama's cloud | `OLLAMA_API_KEY` |
 | `deepseek` | Web search and fetch, with DeepSeek's | `DEEPSEEK_API_KEY` |
 | `aftership` | Track shipments: list, add, change, complete and delete them, and find couriers | `AFTERSHIP_API_KEY` |
-| `webhook` | Create a webhook, a URL which a service calls, list webhooks and their recent calls, change or test a webhook, get a call, and delete webhooks or calls. Calls are kept, and logged, but don't come to the conversation yet | `WEBHOOK_ENDPOINT`, such as `http://localhost:8087/api` |
+| `webhook` | Create a webhook, a URL which a service calls, list webhooks and their recent calls, change or test a webhook, get a call, and delete webhooks or calls. Calls are kept, and the built-in `webhook` agent handles them, as each webhook's description says, and tells the person of what matters, in the conversation | `WEBHOOK_ENDPOINT`, such as `http://localhost:8087/api` |
 | `messaging` | Connect, list, send to and disconnect chats, such as on Telegram | `TELEGRAM_BOT_TOKEN` |
 | *a connector's* | The tools of a remote MCP server | A connector |
 

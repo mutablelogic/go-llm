@@ -33,7 +33,7 @@ var _ llm.Tool = (*list)(nil)
 type listInput struct {
 	Webhook uint64 `json:"webhook_id,omitempty" help:"Serial number of the only webhook to list, with its calls, rather than each of this conversation's" optional:""`
 	Since   string `json:"call_since,omitempty" help:"How long ago the calls to list were received, at most, such as 30m, 1h, 1d12h or 1w, or any time, when it isn't given" example:"1h" optional:""`
-	Status  string `json:"call_status,omitempty" enum:"accepted,refused" help:"Which calls to list: accepted, or refused, such as those which weren't signed, or both, when it isn't given" optional:""`
+	Status  string `json:"call_status,omitempty" enum:"accepted,refused,pending,seen" help:"Which calls to list: accepted, or refused, such as those which weren't signed, or both, when it isn't given, or, of those which were accepted, pending, which the agent hasn't handled, or seen, which it has" optional:""`
 	Limit   uint64 `json:"call_limit,omitempty" help:"Most calls to list, which is 10 when it isn't given" min:"1" max:"20" optional:""`
 }
 
@@ -45,6 +45,7 @@ type callOutput struct {
 	Event     string `json:"event,omitempty"`
 	Status    string `json:"status"`
 	Test      bool   `json:"test,omitempty"`
+	Seen      bool   `json:"seen,omitempty"`
 	Signature string `json:"signature"`
 	Error     string `json:"error,omitempty"`
 }
@@ -84,7 +85,7 @@ const (
 func (*list) Name() string { return "list" }
 
 func (*list) Description() string {
-	return "Lists this conversation's webhooks, and the most recent calls of them, newest first, such as those of the past hour: when each was received, its event, which is what its service says happened, whether it was accepted, or refused, and why, and its signature: verified, failed, when it's missing, or wrong, so the call was refused, or not_checked, when the webhook had no secret to check it with, so anyone who has its URL could have sent it. A test is a call which webhook:test made, and no service sent. The filters of calls don't change which webhooks are listed. A call's id is a serial number across every webhook, so isn't how many there are, which is calls_count. What a call sent, which webhook:get returns, and a webhook's URL, aren't listed."
+	return "Lists this conversation's webhooks, and the most recent calls of them, newest first, such as those of the past hour: when each was received, its event, which is what its service says happened, whether it was accepted, or refused, and why, and its signature: verified, failed, when it's missing, or wrong, so the call was refused, or not_checked, when the webhook had no secret to check it with, so anyone who has its URL could have sent it. A test is a call which webhook:test made, and no service sent. One which was accepted is seen, once the agent has handled it, which it does within a minute or so. The filters of calls don't change which webhooks are listed. A call's id is a serial number across every webhook, so isn't how many there are, which is calls_count. What a call sent, which webhook:get returns, and a webhook's URL, aren't listed."
 }
 
 func (*list) InputSchema() *jsonschema.Schema {
@@ -170,6 +171,7 @@ func newCallOutput(call schema.Call) callOutput {
 		Event:     schema.HideToken(call.Event),
 		Status:    call.Status(),
 		Test:      call.Test,
+		Seen:      !call.Seen.IsZero(),
 		Signature: signature(call),
 		Error:     schema.HideToken(call.Error),
 	}

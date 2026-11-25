@@ -16,7 +16,7 @@ import { toolNamespace, type Namespace, type Tool } from '../schema/tool';
 
 // hidden are the tools which aren't chosen, as only the server runs them,
 // which the toolkit leaves out of * and builtin:* too
-const hidden = new Set(['builtin:event', 'builtin:compact']);
+const hidden = new Set(['builtin:event', 'builtin:compact', 'builtin:webhook']);
 
 // groupOf returns the group a namespace is shown in, which is agent for the
 // agents' namespaces, those which people make, and the server's own, so

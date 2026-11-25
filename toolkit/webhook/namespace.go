@@ -30,21 +30,10 @@ type Namespace struct {
 	client *httpclient.Client
 	tools  []llm.Tool
 
-	// Held while it's run, which changes what's below
+	// Held while it's run, which handles calls with the function, or while
+	// it's set
 	running sync.Mutex
-
-	// Whether a call was seen, and the serial number of the last which was
-	// handled, or before the first, which those which were missed are after
-	seen bool
-	last uint64
-
-	// When the latest call which was handled was received, or zero, before
-	// any was
-	latest time.Time
-
-	// The last call which was handled as it was missed, since it started
-	// watching, as it can be told of it too
-	missed uint64
+	handle  HandleFunc
 }
 
 var _ toolkit.Namespace = (*Namespace)(nil)

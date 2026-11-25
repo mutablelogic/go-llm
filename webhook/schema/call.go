@@ -19,6 +19,8 @@ import (
 const (
 	CallAccepted = "accepted" // kept, as it was verified, when its webhook has a secret, and decoded
 	CallRefused  = "refused"  // kept, with why it was refused
+	CallPending  = "pending"  // accepted, and not seen
+	CallSeen     = "seen"     // accepted, and seen, as it was handled
 )
 
 // How a test call is signed
@@ -50,18 +52,19 @@ type Call struct {
 	Verified bool              `json:"verified" readonly:"" help:"Whether its signature was verified, with the webhook's secret"`
 	Test     bool              `json:"test,omitempty" readonly:"" help:"Whether it's a test call, which no service sent"`
 	Error    string            `json:"error,omitempty" readonly:"" help:"Why it was refused, such as that its signature isn't the webhook's, when it was, which is kept, so a secret which is wrong can be seen"`
+	Seen     time.Time         `json:"seen,omitzero" readonly:"" help:"When it was seen, as it was handled, such as by running an agent with it, once it was"`
 	Body     []byte            `json:"body,omitempty" readonly:"" help:"Its body, as it was sent, up to a limit, which a signature is checked against"`
 }
 
 // CallListRequest is which calls are listed: those of the webhook, or the
-// session's webhooks, when there's one, those which were accepted, or
-// refused, or both, after the call with the serial number, and received
-// since the time, oldest first, or newest, and at most the limit of them
+// session's webhooks, when there's one, those of the status, or every one,
+// after the call with the serial number, and received since the time, oldest
+// first, or newest, and at most the limit of them
 type CallListRequest struct {
 	Webhook uint64    `json:"webhook,omitempty" help:"Serial number of the webhook whose calls are listed" optional:""`
 	Session string    `json:"session,omitempty" help:"Identifier of the session whose webhooks' calls are listed" optional:""`
 	After   uint64    `json:"after,omitempty" help:"Serial number of the call after which they're listed, such as the last which was had" optional:""`
-	Status  string    `json:"status,omitempty" help:"Which calls are listed: accepted, refused, or both, when it's empty" enum:"accepted,refused" optional:""`
+	Status  string    `json:"status,omitempty" help:"Which calls are listed: accepted, refused, or both, when it's empty, or, of those which were accepted, pending, which aren't seen, or seen" enum:"accepted,refused,pending,seen" optional:""`
 	Since   time.Time `json:"since,omitzero" help:"When the calls which are listed were received, or after, to the second" example:"2026-11-24T09:00:00Z" optional:""`
 	Newest  bool      `json:"newest,omitempty" help:"Whether the newest are listed first, rather than the oldest" optional:""`
 	Limit   *uint64   `json:"limit,omitempty" help:"Most calls to return" optional:""`
@@ -80,6 +83,16 @@ type CallList struct {
 type TestRequest struct {
 	Webhook   uint64 `json:"webhook" help:"Serial number of the webhook"`
 	Signature string `json:"signature,omitempty" enum:"good,bad,none" help:"How the call is signed: good, with the webhook's secret, which it needs to have, bad, with another, or none. When it's empty, it's good, when the webhook has a secret, or else none" optional:""`
+}
+
+// SeenRequest is the calls which were seen, as they were handled
+type SeenRequest struct {
+	Calls []uint64 `json:"calls" help:"Serial numbers of the calls which were seen, which are at most 100" example:"[1,2]"`
+}
+
+// SeenResponse is how many calls weren't seen before
+type SeenResponse struct {
+	Count uint64 `json:"count" help:"How many calls weren't seen before, and are now"`
 }
 
 // HookResponse is the response to a call of a webhook's URL, which was kept,
@@ -127,6 +140,11 @@ func (c Call) Status() string {
 	return CallAccepted
 }
 
+// IsPending returns whether the call was accepted, and isn't seen
+func (c Call) IsPending() bool {
+	return c.Error == "" && c.Seen.IsZero()
+}
+
 func (c Call) String() string {
 	return types.Stringify(c)
 }
@@ -170,6 +188,9 @@ func (c Call) Cell(col int) tui.CellText {
 			status = CallRefused + ": " + c.Error
 		} else if c.Verified {
 			status += ", verified"
+		}
+		if !c.Seen.IsZero() {
+			status += ", seen"
 		}
 		if c.Test {
 			status = "test " + status

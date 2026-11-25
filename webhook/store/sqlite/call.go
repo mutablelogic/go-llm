@@ -71,6 +71,16 @@ func (self *Store) ListCalls(ctx context.Context, req webhook.CallListRequest) (
 	return webhook.CallList(result), nil
 }
 
+func (self *Store) SeeCalls(ctx context.Context, ids []uint64) (_ uint64, err error) {
+	ctx, end := self.span(ctx, "SeeCalls", attribute.String("arg.ids", types.Stringify(ids)))
+	defer func() { end(err) }()
+	var count schema.CallCount
+	if err := self.conn.Update(ctx, &count, schema.CallIDs(ids), schema.CallSeen(time.Now())); err != nil && !errors.Is(err, sqlite.ErrNotFound) {
+		return 0, storeErr(err)
+	}
+	return uint64(count), nil
+}
+
 func (self *Store) DeleteCalls(ctx context.Context, before time.Time) (_ uint64, err error) {
 	ctx, end := self.span(ctx, "DeleteCalls", attribute.String("arg.before", before.UTC().Format(time.RFC3339)))
 	defer func() { end(err) }()

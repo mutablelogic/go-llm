@@ -144,6 +144,20 @@ func (c *Client) TestCall(ctx context.Context, test schema.TestRequest) (*schema
 	return &response, nil
 }
 
+// SeeCalls marks the calls of the request as seen, as they were handled, and
+// returns how many weren't seen before
+func (c *Client) SeeCalls(ctx context.Context, seen schema.SeenRequest) (*schema.SeenResponse, error) {
+	req, err := client.NewJSONRequestEx(http.MethodPatch, seen, types.ContentTypeJSON)
+	if err != nil {
+		return nil, err
+	}
+	var response schema.SeenResponse
+	if err := c.DoWithContext(ctx, req, &response, client.OptPath(webhookPath, callPath)); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 // GetCall returns the call with the serial number
 func (c *Client) GetCall(ctx context.Context, id uint64) (*schema.Call, error) {
 	var response schema.Call

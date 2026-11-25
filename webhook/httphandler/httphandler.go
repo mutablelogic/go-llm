@@ -208,7 +208,7 @@ func callsHandler(r *registry.Registry, router *httprouter.Router, documentation
 			op.Description(documentation.Section(3, "GET /webhook/call").Body)
 			op.Query(jsonschema.MustFor[schema.CallListRequest]())
 			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.CallList](), "The calls, oldest first, or newest, and how many there are after the call")
-			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a status which isn't accepted, or refused")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a status which isn't one")
 		})
 
 		// POST
@@ -228,6 +228,24 @@ func callsHandler(r *registry.Registry, router *httprouter.Router, documentation
 			op.JSONResponse(http.StatusCreated, jsonschema.MustFor[schema.Call](), "The test call, which was accepted, or refused")
 			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as a good signature, of a webhook which has no secret")
 			op.ErrorResponse(http.StatusNotFound, "Webhook not found")
+		})
+
+		// PATCH
+		path.Patch(func(w http.ResponseWriter, req *http.Request) {
+			var seen schema.SeenRequest
+			if err := httprequest.Read(req, &seen); err != nil {
+				httpresponse.Error(w, httpresponse.ErrBadRequest.With(err.Error()))
+			} else if response, err := r.SeeCalls(req.Context(), seen); err != nil {
+				httpresponse.Error(w, llm.HTTPErr(err))
+			} else {
+				httpresponse.JSON(w, http.StatusOK, httprequest.Indent(req), response)
+			}
+		}, func(op httprequest.PathOperation) {
+			op.Summary("See Calls")
+			op.Description(documentation.Section(3, "PATCH /webhook/call").Body)
+			op.RequestBody(jsonschema.MustFor[schema.SeenRequest]())
+			op.JSONResponse(http.StatusOK, jsonschema.MustFor[schema.SeenResponse](), "How many calls weren't seen before")
+			op.ErrorResponse(http.StatusBadRequest, "Invalid request, such as without calls")
 		})
 	})
 }
