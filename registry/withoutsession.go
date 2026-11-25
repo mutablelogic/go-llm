@@ -48,7 +48,8 @@ const respondAttempts = 3
 // WithoutSession.
 func (r *Registry) Ask(ctx context.Context, req schema.AskRequest, stream llm.GeneratorStreamFn) (_ *schema.AskResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.Ask",
-		attribute.String("arg.req", req.String()),
+		attribute.String("arg.req", tracedAsk(req).String()),
+		attribute.Int("arg.req.messages", len(req.Messages)),
 	)
 	defer func() { endSpan(err) }()
 

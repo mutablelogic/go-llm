@@ -190,7 +190,9 @@ type EventBuilder func(context.Context, schema.EventRequest) (schema.RunEventReq
 // session store.
 func (r *Registry) TriggerEvent(ctx context.Context, req schema.EventRequest) (_ *schema.TriggerEventResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.TriggerEvent",
-		attribute.String("arg.req", req.String()),
+		attribute.String("arg.req", tracedEvent(req).String()),
+		attribute.Int("arg.req.prompt", len(req.Prompt)),
+		attribute.Int("arg.req.data", len(req.Data)),
 	)
 	defer func() { endSpan(err) }()
 

@@ -342,7 +342,8 @@ func (r *Registry) DeleteAgent(ctx context.Context, name string) (_ *schema.Agen
 func (r *Registry) RunAgent(ctx context.Context, name string, req schema.RunAgentRequest, stream llm.GeneratorStreamFn) (_ *schema.RunAgentResponse, err error) {
 	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "llm.registry.RunAgent",
 		attribute.String("arg.name", name),
-		attribute.String("arg.req", req.String()),
+		attribute.String("arg.req", tracedRunAgent(req).String()),
+		attribute.Int("arg.req.input", len(req.Input)),
 	)
 	defer func() { endSpan(err) }()
 
