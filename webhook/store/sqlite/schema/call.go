@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -16,6 +17,12 @@ import (
 // CallID selects a call, by its serial number, which is got, or deleted
 type CallID uint64
 
+// CallIDs selects calls, by their serial numbers, which are marked as seen
+type CallIDs []uint64
+
+// CallSeen marks calls as seen, at the time
+type CallSeen time.Time
+
 // CallInsert is a call which is created
 type CallInsert webhook.Call
 
@@ -30,7 +37,7 @@ type CallList webhook.CallList
 // deleted
 type CallsBefore time.Time
 
-// CallCount is how many calls were deleted
+// CallCount is how many calls were deleted, or marked as seen
 type CallCount uint64
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -47,6 +54,20 @@ func (id CallID) Select(bind *sqlite.Bind, op sqlite.Op) (string, error) {
 	return "", sqlite.ErrNotImplemented.Withf("call: %v", op)
 }
 
+func (ids CallIDs) Select(bind *sqlite.Bind, op sqlite.Op) (string, error) {
+	if op != sqlite.Update {
+		return "", sqlite.ErrNotImplemented.Withf("calls: %v", op)
+	} else if len(ids) > ListLimit {
+		return "", llm.ErrBadParameter.Withf("%d calls are more than %d", len(ids), ListLimit)
+	}
+	data, err := json.Marshal([]uint64(ids))
+	if err != nil {
+		return "", err
+	}
+	bind.Set("ids", string(data))
+	return bind.Query("call.seen"), nil
+}
+
 func (req CallListRequest) Select(bind *sqlite.Bind, op sqlite.Op) (string, error) {
 	if op != sqlite.List {
 		return "", sqlite.ErrNotImplemented.Withf("calls: %v", op)
@@ -60,9 +81,9 @@ func (req CallListRequest) Select(bind *sqlite.Bind, op sqlite.Op) (string, erro
 	bind.Set("after", req.After)
 	status := strings.ToLower(strings.TrimSpace(req.Status))
 	switch status {
-	case "", webhook.CallAccepted, webhook.CallRefused:
+	case "", webhook.CallAccepted, webhook.CallRefused, webhook.CallPending, webhook.CallSeen:
 	default:
-		return "", llm.ErrBadParameter.Withf("call status %q isn't %s, or %s", req.Status, webhook.CallAccepted, webhook.CallRefused)
+		return "", llm.ErrBadParameter.Withf("call status %q isn't %s, %s, %s or %s", req.Status, webhook.CallAccepted, webhook.CallRefused, webhook.CallPending, webhook.CallSeen)
 	}
 	bind.Set("status", status)
 	bind.Set("since", sinceOf(req.Since))
@@ -118,12 +139,22 @@ func (CallInsert) Update(*sqlite.Bind) error {
 	return sqlite.ErrNotImplemented.With("a call isn't changed")
 }
 
+func (CallSeen) Insert(*sqlite.Bind) (string, error) {
+	return "", sqlite.ErrNotImplemented.With("a call is created with CallInsert")
+}
+
+// Update binds when the calls were seen
+func (seen CallSeen) Update(bind *sqlite.Bind) error {
+	bind.Set("now", time.Time(seen).UTC())
+	return nil
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // READERS
 
 func (list *CallList) Scan(row sqlite.Row) error {
 	var c webhook.Call
-	if err := row.Scan(&c.ID, &c.Webhook, &c.Received, &c.Method, &c.Query, &c.Headers, &c.Values, &c.Event, &c.Delivery, &c.Verified, &c.Test, &c.Error, &c.Body); err != nil {
+	if err := row.Scan(&c.ID, &c.Webhook, &c.Received, &c.Method, &c.Query, &c.Headers, &c.Values, &c.Event, &c.Delivery, &c.Verified, &c.Test, &c.Error, &c.Seen, &c.Body); err != nil {
 		return err
 	}
 	list.Body = append(list.Body, c)
@@ -134,7 +165,7 @@ func (list *CallList) ScanCount(row sqlite.Row) error {
 	return row.Scan(&list.Count)
 }
 
-// Scan counts a call which was deleted
+// Scan counts a call which was deleted, or marked as seen
 func (count *CallCount) Scan(sqlite.Row) error {
 	*count++
 	return nil

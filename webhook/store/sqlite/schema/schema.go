@@ -17,16 +17,22 @@ import (
 
 const (
 	// Version is the version of the schema, of the database's user_version
-	Version = 2
+	Version = 3
 
 	// ListLimit is the most rows which are listed at once
 	ListLimit = 100
 )
 
 // upgrades are the statements which upgrade a schema, from each version to
-// the next, such as from version 1, to 2
+// the next, such as from version 1, to 2. The calls which a database has,
+// as it's upgraded to version 3, are seen, so they aren't all handled then.
 var upgrades = map[int64][]string{
 	1: {"ALTER TABLE call ADD COLUMN test BOOLEAN NOT NULL DEFAULT 0"},
+	2: {
+		"ALTER TABLE call ADD COLUMN seen_at TIMESTAMP",
+		"UPDATE call SET seen_at = received_at WHERE error IS NULL",
+		"CREATE INDEX IF NOT EXISTS call_pending ON call (id) WHERE error IS NULL AND seen_at IS NULL",
+	},
 }
 
 var (

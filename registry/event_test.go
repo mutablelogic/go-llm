@@ -292,9 +292,11 @@ func Test_EventOutcomes(t *testing.T) {
 	assert.False(t, delivered.Time.IsZero())
 
 	// One which isn't is ignored
-	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call"}, nil)
+	response, err = r.RunEvent(ctx, event, schema.RunEventRequest{Session: parent.ID, Input: input, Title: "Call", Source: " webhook ", Detail: " Of call 12. "}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, response.Event)
+	assert.Equal(t, "webhook", response.Event.Source)
+	assert.Equal(t, "Of call 12.", response.Event.Detail)
 	assert.Equal(t, schema.EventIgnored, response.Event.Status)
 	assert.Equal(t, "Nothing new", response.Event.Message)
 

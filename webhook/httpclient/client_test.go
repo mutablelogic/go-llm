@@ -73,6 +73,21 @@ func Test_Client(t *testing.T) {
 	response, err = c.Hook(ctx, created.Token, http.MethodPost, types.ContentTypeJSON, strings.NewReader(body), header)
 	require.NoError(t, err)
 	assert.True(t, response.Duplicate)
+
+	// Pending, until it's seen
+	pending, err := c.ListCalls(ctx, schema.CallListRequest{Status: schema.CallPending})
+	require.NoError(t, err)
+	require.Len(t, pending.Body, 1)
+	assert.True(t, pending.Body[0].IsPending())
+	seen, err := c.SeeCalls(ctx, schema.SeenRequest{Calls: []uint64{kept}})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), seen.Count)
+	handled, err := c.GetCall(ctx, kept)
+	require.NoError(t, err)
+	assert.False(t, handled.IsPending())
+	_, err = c.SeeCalls(ctx, schema.SeenRequest{})
+	assert.Error(t, err)
+
 	header.Del("X-Hub-Signature-256")
 	_, err = c.Hook(ctx, created.Token, http.MethodPost, types.ContentTypeJSON, strings.NewReader(body), header)
 	assert.Error(t, err)

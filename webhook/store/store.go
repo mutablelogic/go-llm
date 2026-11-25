@@ -84,9 +84,14 @@ type CallStore interface {
 	// webhooks, when the request has one, after the call with its serial
 	// number, and received since its time, oldest first, or newest, when
 	// the request says so, and at most its limit of them, and how many
-	// there are, which were accepted, or refused, or both, of the request's
-	// status
+	// there are, which were accepted, or refused, or both, or, of those
+	// which were accepted, are pending, or seen, of the request's status
 	ListCalls(ctx context.Context, req schema.CallListRequest) (schema.CallList, error)
+
+	// SeeCalls marks the calls with the serial numbers as seen, now, which
+	// aren't already, and returns how many weren't. One which was deleted,
+	// or refused, isn't marked.
+	SeeCalls(ctx context.Context, ids []uint64) (uint64, error)
 
 	// DeleteCall deletes the call with the serial number, and returns it, as
 	// it was, or ErrNotFound when there's none

@@ -165,7 +165,7 @@ func Test_List(t *testing.T) {
 	// Not without a session, or when the server can't be reached
 	_, _, err = call(t.Context(), `{}`)
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
-	_, _, err = call(ctx, `{"call_status":"pending"}`)
+	_, _, err = call(ctx, `{"call_status":"unknown"}`)
 	assert.Error(t, err)
 	s.down.Store(true)
 	_, _, err = call(ctx, `{}`)

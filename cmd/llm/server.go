@@ -34,6 +34,7 @@ import (
 	toolkit "github.com/mutablelogic/go-llm/toolkit"
 	toolkitcmd "github.com/mutablelogic/go-llm/toolkit/cmd"
 	llmtools "github.com/mutablelogic/go-llm/toolkit/llm"
+	webhook "github.com/mutablelogic/go-llm/toolkit/webhook"
 	workspace "github.com/mutablelogic/go-llm/workspace"
 	workspacecmd "github.com/mutablelogic/go-llm/workspace/cmd"
 	filer "github.com/mutablelogic/go-llm/workspace/filer"
@@ -233,6 +234,14 @@ func (runner *RunServer) withToolkit(ctx server.Cmd, b *broadcaster.Broadcaster,
 		}
 		ctx.Logger().InfoContext(ctx.Context(), "tools added", "namespace", h.Name(), "tools", len(h.Tools()))
 
+		// The webhooks, when there's a webhook server, whose calls are
+		// handled by the webhook agent, once the registry is made
+		if ns, exists := tools.Namespace(webhook.Name); exists {
+			if ns, ok := ns.(*webhook.Namespace); ok {
+				ns.Handle(handleWebhooks(events, mem.Details, ctx.Logger()))
+			}
+		}
+
 		// The llm namespace, whose tools ask the registry's models, once it's
 		// made, to speak text, read the text in images and documents, and
 		// transcribe speech, with the model the model which calls them gives,
@@ -362,7 +371,7 @@ func (runner *RunServer) withRegistry(ctx server.Cmd, b *broadcaster.Broadcaster
 			// The namespaces run once the registry has its providers, and
 			// their models, and agents: the heartbeats, as one which is
 			// overdue fires as they start, messaging, as models reply to the
-			// messages it receives, and webhooks, which are watched for calls
+			// messages it receives, and webhooks, whose calls are handled
 			select {
 			case <-r.Ready():
 			case <-runCtx.Done():

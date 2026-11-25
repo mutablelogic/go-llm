@@ -23,12 +23,13 @@ import (
 
 // unexpanded are the tools which "*", and their namespace's "*", don't
 // include, as only the server runs them: the event agent, which it gives
-// what it trusts, and the compact agent, which summarises a conversation as
-// it's compacted. They're still tools, which can be named, and called, on
+// what it trusts, as it does the webhook agent, and the compact agent, which
+// summarises a conversation as it's compacted. They're still tools, which can be named, and called, on
 // their own.
 var unexpanded = map[string]bool{
 	"builtin:event":   true,
 	"builtin:compact": true,
+	"builtin:webhook": true,
 }
 
 // Unexpanded returns true when "*", and its namespace's "*", don't include

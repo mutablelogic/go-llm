@@ -6,7 +6,7 @@ A webhook is a URL which a service calls, such as GitHub, when an issue is opene
 
 A webhook's URL has a random token, which is returned once, when it's created, as its `token`, and its `url`, of the server's public endpoint. Only the token's hash is kept. A webhook can have a `secret`, which its service signs its calls with, which is set when it's created, or later, such as when a service gives it once the URL is registered there. A secret is never returned: `has_secret` says whether there is one.
 
-Each call is kept, as it was received: its method, query, the headers its protocol keeps, its body, as JSON `values`, and as it was sent, what happened, its `delivery`, and whether it was `verified`, or is a `test`. A call which is refused, such as one whose signature isn't the webhook's, or whose body is too large, is kept too, with its `error`, so a secret which is wrong can be seen.
+Each call is kept, as it was received: its method, query, the headers its protocol keeps, its body, as JSON `values`, and as it was sent, what happened, its `delivery`, and whether it was `verified`, or is a `test`. It's pending, when it's accepted, until it's `seen`. A call which is refused, such as one whose signature isn't the webhook's, or whose body is too large, is kept too, with its `error`, so a secret which is wrong can be seen.
 
 ### GET /webhook
 
@@ -30,11 +30,15 @@ Delete the webhook, and its calls, so its URL stops working at once. Returns the
 
 ### GET /webhook/call
 
-List the calls, oldest first, after the call with the serial number `after`, with how many there are after it, so what watches them carries on after the last it had, or newest first, with `newest`. With `since`, which is a time, only those received then, or after, to the second, are listed and counted. With `webhook`, or `session`, only those of the webhook, or the session's webhooks, are listed, and with `status`, only those which were `accepted`, or `refused`. Up to 100 are listed at a time, and at most the `limit`.
+List the calls, oldest first, after the call with the serial number `after`, with how many there are after it, so what watches them carries on after the last it had, or newest first, with `newest`. With `since`, which is a time, only those received then, or after, to the second, are listed and counted. With `webhook`, or `session`, only those of the webhook, or the session's webhooks, are listed, and with `status`, only those which were `accepted`, or `refused`, or, of those which were accepted, are `pending`, or `seen`. Up to 100 are listed at a time, and at most the `limit`.
 
 ### POST /webhook/call
 
 Make a test call to the `webhook`, which its service could make, with a `signature` which is `good`, with the webhook's secret, `bad`, with another, or `none`. Without one, it's `good`, when the webhook has a secret, or else `none`. It's verified, accepted or refused, kept, and published, as any call is, and marked as a `test`, which a service's call can't be. The webhook's URL isn't called. Returns the call, whether it was accepted, or refused, 404 if there's no webhook, or 400 if the signature is `good`, and the webhook has no secret.
+
+### PATCH /webhook/call
+
+Mark the `calls`, which are serial numbers, at most 100, as seen, as they were handled, such as by running an agent with them, so they're no longer pending. One which was seen already, or refused, or deleted, isn't marked. Returns the `count` which weren't seen before. Returns 400 without calls, or with too many.
 
 ### GET /webhook/call/{id}
 

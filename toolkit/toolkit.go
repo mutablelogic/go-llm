@@ -286,6 +286,15 @@ func (self *Toolkit) HasNamespace(name string) bool {
 	return exists
 }
 
+// Namespace returns the namespace with the name, or false, when the toolkit
+// has none
+func (self *Toolkit) Namespace(name string) (Namespace, bool) {
+	self.mu.RLock()
+	defer self.mu.RUnlock()
+	ns, exists := self.namespaces[name]
+	return ns, exists
+}
+
 // Credential returns the value of the credential with the key, such as a
 // tool's API key, from the toolkit's credential provider. Returns
 // ErrNotFound when the credential doesn't exist, or is empty, as when its

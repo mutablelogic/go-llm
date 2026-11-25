@@ -29,7 +29,7 @@ type CallCommands struct {
 type CallsCmd struct {
 	Webhook uint64        `name:"webhook" help:"Serial number of the webhook whose calls are listed."`
 	Session string        `name:"session" help:"Identifier of the session whose webhooks' calls are listed."`
-	Status  string        `name:"status" enum:",accepted,refused" default:"" help:"Which calls are listed: accepted, refused, or both, when it's not set."`
+	Status  string        `name:"status" enum:",accepted,refused,pending,seen" default:"" help:"Which calls are listed: accepted, refused, or both, when it's not set, or, of those which were accepted, pending, which aren't seen, or seen."`
 	After   uint64        `name:"after" help:"Serial number of the call after which they're listed."`
 	Since   time.Duration `name:"since" help:"List those received this long ago, at most, such as 1h, or 7d."`
 	Newest  bool          `name:"newest" help:"List the newest first, rather than the oldest."`

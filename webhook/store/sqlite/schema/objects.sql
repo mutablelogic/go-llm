@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS call (
   verified    BOOLEAN NOT NULL,
   error       TEXT,                       -- why it was refused, or NULL, when it wasn't
   body        BLOB,                       -- its body, as it was sent
-  test        BOOLEAN NOT NULL DEFAULT 0  -- whether it's a test call, which no service sent
+  test        BOOLEAN NOT NULL DEFAULT 0, -- whether it's a test call, which no service sent
+  seen_at     TIMESTAMP                   -- when it was seen, as it was handled, or NULL
 );
 
 -- schema.call_webhook
@@ -46,3 +47,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS call_delivery ON call (webhook, delivery) WHER
 
 -- schema.call_received
 CREATE INDEX IF NOT EXISTS call_received ON call (received_at);
+
+-- schema.call_pending
+-- The calls which were accepted, and aren't seen
+CREATE INDEX IF NOT EXISTS call_pending ON call (id) WHERE error IS NULL AND seen_at IS NULL;

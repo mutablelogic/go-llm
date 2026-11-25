@@ -148,9 +148,25 @@ func (r *Registry) DeleteCall(ctx context.Context, id uint64) (_ schema.Call, er
 	return r.store.DeleteCall(ctx, id)
 }
 
+// SeeCalls marks the calls of the request as seen, as they were handled, so
+// they aren't handled again, and returns how many weren't seen before. One
+// which was deleted, or refused, isn't marked. Returns ErrBadParameter when
+// it has no calls, or too many.
+func (r *Registry) SeeCalls(ctx context.Context, req schema.SeenRequest) (_ schema.SeenResponse, err error) {
+	ctx, endSpan := otel.StartSpan(r.tracer, ctx, "webhook.registry.SeeCalls",
+		attribute.String("arg.req", types.Stringify(req)),
+	)
+	defer func() { endSpan(err) }()
+	if len(req.Calls) == 0 {
+		return schema.SeenResponse{}, llm.ErrBadParameter.With("missing calls")
+	}
+	count, err := r.store.SeeCalls(ctx, req.Calls)
+	return schema.SeenResponse{Count: count}, err
+}
+
 // ListCalls returns the calls, of the webhook, or the session's webhooks,
-// when the request has one, which were accepted, or refused, or both, of
-// its status, after the call with its serial number, and received since its
+// when the request has one, which were accepted, or refused, or both, or are
+// pending, or seen, of its status, after the call with its serial number, and received since its
 // time, oldest first, so what watches them carries on after the last it had,
 // or newest, when the request says so, and how many there are. Returns ErrBadParameter when its status isn't one.
 func (r *Registry) ListCalls(ctx context.Context, req schema.CallListRequest) (_ schema.CallList, err error) {

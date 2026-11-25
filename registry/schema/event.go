@@ -42,6 +42,7 @@ type EventMeta struct {
 	Source     string          `json:"source,omitempty" help:"What the event is from, such as inbox, when it was triggered, rather than a heartbeat" example:"inbox"`
 	Heartbeat  bool            `json:"heartbeat,omitempty" help:"Whether the event is a heartbeat which fired, on its schedule"`
 	Title      string          `json:"title,omitempty" help:"What the event is for" example:"Morning briefing"`
+	Detail     string          `json:"detail,omitempty" help:"What the system says of the event, to the session's model, rather than the person, such as which webhook calls it's of" example:"It's of webhook call 12."`
 	Message    string          `json:"message,omitempty" help:"What the person is told, or, when it's ignored, why, or, when it failed, the error, which it has once it's run" example:"It's 4°C and cloudy in Berlin today"`
 	Importance EventImportance `json:"importance,omitempty" help:"How important the message is, once it's run" enum:"ignore,notify,alert" example:"notify"`
 	Status     EventStatus     `json:"status" help:"What's become of the event" enum:"scheduled,failed,ignored,pending,notified,delivered" example:"pending"`

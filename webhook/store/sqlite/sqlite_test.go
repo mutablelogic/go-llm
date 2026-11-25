@@ -224,7 +224,7 @@ func Test_Store_Calls(t *testing.T) {
 	list, err = s.ListCalls(ctx, webhook.CallListRequest{Webhook: a.ID, After: two.ID})
 	require.NoError(t, err)
 	assert.Equal(t, []uint64{refused.ID, accepted.ID}, callIDs(list.Body))
-	_, err = s.ListCalls(ctx, webhook.CallListRequest{Status: "pending"})
+	_, err = s.ListCalls(ctx, webhook.CallListRequest{Status: "unknown"})
 	assert.ErrorIs(t, err, llm.ErrBadParameter)
 
 	// Deleted, so its delivery is kept again
@@ -252,6 +252,65 @@ func Test_Store_Calls(t *testing.T) {
 	list, err = s.ListCalls(ctx, webhook.CallListRequest{})
 	require.NoError(t, err)
 	assert.Zero(t, list.Count)
+}
+
+func Test_Store_SeeCalls(t *testing.T) {
+	ctx := context.Background()
+	s := newStore(t)
+	session := uuid.New()
+	a, err := s.CreateWebhook(ctx, webhook.WebhookMeta{Session: session}, hash("a"))
+	require.NoError(t, err)
+	b, err := s.CreateWebhook(ctx, webhook.WebhookMeta{Session: uuid.New()}, hash("b"))
+	require.NoError(t, err)
+	var calls []webhook.Call
+	for _, call := range []webhook.Call{{Webhook: a.ID}, {Webhook: a.ID, Error: "refused"}, {Webhook: b.ID}, {Webhook: a.ID, Delivery: "d1"}} {
+		call.Method = "POST"
+		call, err := s.CreateCall(ctx, call)
+		require.NoError(t, err)
+		assert.True(t, call.Seen.IsZero())
+		calls = append(calls, call)
+	}
+	list := func(status, session string) []uint64 {
+		list, err := s.ListCalls(ctx, webhook.CallListRequest{Status: status, Session: session})
+		require.NoError(t, err)
+		assert.Equal(t, uint(len(list.Body)), list.Count)
+		return callIDs(list.Body)
+	}
+
+	// Those which were accepted are pending
+	assert.Equal(t, []uint64{1, 3, 4}, list(webhook.CallPending, ""))
+	assert.Equal(t, []uint64{1, 4}, list(webhook.CallPending, session.String()))
+	assert.Empty(t, list(webhook.CallSeen, ""))
+
+	// They're seen, once, apart from one which was refused, or isn't there
+	count, err := s.SeeCalls(ctx, []uint64{1, 2, 3, 99})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), count)
+	assert.Equal(t, []uint64{4}, list(webhook.CallPending, ""))
+	assert.Equal(t, []uint64{1, 3}, list(webhook.CallSeen, ""))
+	assert.Equal(t, []uint64{1, 3, 4}, list(webhook.CallAccepted, ""))
+	seen, err := s.GetCall(ctx, 1)
+	require.NoError(t, err)
+	assert.WithinDuration(t, time.Now(), seen.Seen, time.Minute)
+	count, err = s.SeeCalls(ctx, []uint64{1, 2})
+	require.NoError(t, err)
+	assert.Zero(t, count)
+	again, err := s.GetCall(ctx, 1)
+	require.NoError(t, err)
+	assert.Equal(t, seen, again, "it keeps when it was first seen")
+
+	// A delivery which was seen isn't kept again
+	_, err = s.SeeCalls(ctx, []uint64{calls[3].ID})
+	require.NoError(t, err)
+	_, err = s.CreateCall(ctx, webhook.Call{Webhook: a.ID, Method: "POST", Delivery: "d1"})
+	assert.ErrorIs(t, err, llm.ErrConflict)
+
+	// At most so many at once
+	_, err = s.SeeCalls(ctx, make([]uint64, 101))
+	assert.ErrorIs(t, err, llm.ErrBadParameter)
+	count, err = s.SeeCalls(ctx, nil)
+	require.NoError(t, err)
+	assert.Zero(t, count)
 }
 
 func ids(webhooks []webhook.Webhook) []uint64 {
@@ -310,19 +369,24 @@ func Test_Store_Upgrade(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
-	// A database of version 1, which has no test calls
+	// A database of version 1, which has no test calls, nor seen ones
 	pool, err := ncruces.Open(ctx, path)
 	require.NoError(t, err)
+	require.NoError(t, pool.Exec(ctx, "DROP INDEX call_pending"))
+	require.NoError(t, pool.Exec(ctx, "ALTER TABLE call DROP COLUMN seen_at"))
 	require.NoError(t, pool.Exec(ctx, "ALTER TABLE call DROP COLUMN test"))
 	require.NoError(t, sqlite.SetVersion(ctx, pool, 1))
 	require.NoError(t, pool.Close())
 
-	// It's upgraded, once, with the calls it has, which aren't tests
+	// It's upgraded, once, with the calls it has, which aren't tests, and are
+	// seen, so they aren't handled
 	for range 2 {
 		s, err = store.New(ctx, path)
 		require.NoError(t, err)
 		got, err := s.GetCall(ctx, call.ID)
 		require.NoError(t, err)
+		assert.Equal(t, call.Received, got.Seen)
+		got.Seen = time.Time{}
 		assert.Equal(t, call, got)
 		test, err := s.CreateCall(ctx, webhook.Call{Webhook: a.ID, Method: "POST", Test: true})
 		require.NoError(t, err)
