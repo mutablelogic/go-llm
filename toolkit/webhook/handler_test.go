@@ -186,14 +186,81 @@ func Test_RunWebhookDeleted(t *testing.T) {
 	// isn't tried again
 	s := newServer(t)
 	w := s.webhook(t, "")
-	h := newHandler(s.client(t), func(context.Context, *Calls) error { return errors.New("no model") }, discard)
 	s.call(t, w, "x")
-	require.NoError(t, h.handlePending(t.Context()))
-	assert.False(t, h.next().IsZero())
+	tried := make(chan struct{}, handleTries)
+	h := newHandler(s.client(t), func(context.Context, *Calls) error {
+		tried <- struct{}{}
+		return errors.New("no model")
+	}, discard)
+	require.NoError(t, h.start(t.Context()))
+	<-tried
 	_, err := s.registry.DeleteWebhook(t.Context(), w.ID)
 	require.NoError(t, err)
-	require.NoError(t, h.handlePending(t.Context()))
-	assert.True(t, h.next().IsZero())
+	h.wg.Wait()
+	assert.Empty(t, tried)
+	assert.Empty(t, h.active)
+}
+
+func Test_RunTriesOfEachCall(t *testing.T) {
+	// A call which is received as others are tried again has tries of its
+	// own, so it isn't marked as seen with them
+	s := newServer(t)
+	w := s.webhook(t, "")
+	s.call(t, w, "1")
+	var h handled
+	h.fail(w.Session, errors.New("no model"))
+	count := 0
+	handler := newHandler(s.client(t), func(ctx context.Context, calls *Calls) error {
+		if count++; count == handleTries-1 {
+			s.call(t, w, "2")
+		}
+		return h.handle(ctx, calls)
+	}, discard)
+	require.NoError(t, handler.start(t.Context()))
+	handler.wg.Wait()
+	tried := make(map[uint64]int)
+	for _, ids := range h.of(w.Session) {
+		for _, id := range ids {
+			tried[id]++
+		}
+	}
+	assert.Equal(t, map[uint64]int{1: handleTries, 2: handleTries}, tried)
+	assert.Empty(t, s.pending(t))
+}
+
+func Test_RunSessionsDontWait(t *testing.T) {
+	// A session, even one with more calls than are handled at once, before
+	// another's, doesn't keep it waiting, and one which is received as its
+	// session's calls are handled is handled after them
+	s := newServer(t)
+	slow, fast := s.webhook(t, ""), s.webhook(t, "")
+	for range handleLimit {
+		s.call(t, slow, "slow")
+	}
+	s.call(t, fast, "fast")
+	var h handled
+	release := make(chan struct{})
+	s.run(t, func(ctx context.Context, calls *Calls) error {
+		if calls.Session == slow.Session {
+			select {
+			case <-release:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		return h.handle(ctx, calls)
+	})
+	eventually(t, func() bool { return len(s.pending(t)) == handleLimit })
+	assert.Equal(t, [][]uint64{{handleLimit + 1}}, h.of(fast.Session))
+	s.call(t, slow, "more")
+	s.call(t, fast, "again")
+	eventually(t, func() bool { return len(h.of(fast.Session)) == 2 })
+	assert.Empty(t, h.of(slow.Session))
+	close(release)
+	eventually(t, func() bool { return len(s.pending(t)) == 0 })
+	require.Len(t, h.of(slow.Session), 2)
+	assert.Len(t, h.of(slow.Session)[0], handleLimit)
+	assert.Equal(t, []uint64{handleLimit + 2}, h.of(slow.Session)[1])
 }
 
 func Test_Input(t *testing.T) {
@@ -217,16 +284,28 @@ func Test_Input(t *testing.T) {
 		"context": "Now: 10:00\nPerson's name: Sam"
 	}`, string(data))
 
-	// What was sent is shortened, so it fits, however many calls there are
-	long := json.RawMessage(`{"text":"` + strings.Repeat("long ", 20000) + `"}`)
+	// What was sent, and its event, are shortened, so they fit, however many
+	// calls there are, and however much of each was sent
+	long := strings.Repeat("long ", 20000)
 	for _, n := range []int{1, handleLimit} {
 		calls.Calls = nil
 		for range n {
-			calls.Calls = append(calls.Calls, schema.Call{ID: 1, Webhook: 4, Values: long, Query: map[string][]string{"q": {string(long)}}})
+			calls.Calls = append(calls.Calls, schema.Call{ID: 1, Webhook: 4, Event: strings.Repeat("é", 100000), Values: json.RawMessage(`{"text":"` + long + `"}`), Query: map[string][]string{"q": {long}, long: {"x"}}})
 		}
 		data, err := calls.Input(t.Context(), nil)
 		require.NoError(t, err)
-		assert.Less(t, len(data), valuesTokens*tokenBytes+n*200+500)
-		assert.NotContains(t, string(data), `"query"`)
+		assert.Less(t, len(data), sentTokens*tokenBytes+n*(2*eventLimit+200)+500)
+		var input agentInput
+		require.NoError(t, json.Unmarshal(data, &input))
+		assert.Len(t, []rune(input.Calls[0].Event), eventLimit)
+		assert.Contains(t, string(input.Calls[0].Values), "long long")
+		assert.NotEmpty(t, input.Calls[0].Query)
 	}
+
+	// A short query leaves its tokens for the values
+	calls.Calls = []schema.Call{{ID: 1, Webhook: 4, Query: map[string][]string{"q": {"short"}}, Values: json.RawMessage(`{"text":"` + long + `"}`)}}
+	data, err = calls.Input(t.Context(), nil)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"query":{"q":["short"]}`)
+	assert.Greater(t, len(data), sentTokens*tokenBytes*8/10)
 }
