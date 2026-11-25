@@ -26,7 +26,7 @@ type SessionCommands struct {
 	SessionCreate  SessionCreateCmd  `cmd:"" name:"session-create" help:"Create a session, and make it the default." group:"LLM SESSIONS"`
 	SessionUpdate  SessionUpdateCmd  `cmd:"" name:"session-update" help:"Change a session's settings. An empty value clears one, and --opt key=null removes an option." group:"LLM SESSIONS"`
 	SessionForget  SessionForgetCmd  `cmd:"" name:"session-forget" help:"Forget a session's messages, keeping its settings, so its conversation starts again." group:"LLM SESSIONS"`
-	SessionCompact SessionCompactCmd `cmd:"" name:"session-compact" help:"Compact a session: its context starts at a marker, and a summary of what came before is written in the background." group:"LLM SESSIONS"`
+	SessionCompact SessionCompactCmd `cmd:"" name:"session-compact" help:"Compact a session: a summary of its messages is written in the background, and then sent in their place." group:"LLM SESSIONS"`
 	SessionDelete  SessionDeleteCmd  `cmd:"" name:"session-delete" help:"Delete a session." group:"LLM SESSIONS"`
 }
 

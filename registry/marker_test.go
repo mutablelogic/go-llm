@@ -412,6 +412,75 @@ func Test_CompactPending(t *testing.T) {
 	assert.Len(t, list.Body, 3, "no other marker")
 }
 
+func Test_CompactPendingKeepsContext(t *testing.T) {
+	ctx := context.Background()
+
+	// A conversation which was summarised, and has gone on since, whose next
+	// summary is being written
+	store := test.NewSessionStore()
+	r, p := newCompactingWith(t, []registry.Opt{registry.WithSessionStore(store)},
+		text("Hello"), summarized("They said hi.", "Hi"), text("It's sunny"), text("Still sunny"), summarized("Hi, and it's sunny.", "Sun"), text("No"))
+	session, err := r.CreateSession(ctx, schema.SessionMeta{GeneratorMeta: schema.GeneratorMeta{Model: types.Ptr("model"), System: types.Ptr("Be brief")}})
+	require.NoError(t, err)
+	summarizedBy := func(n int) {
+		t.Helper()
+		_, err := r.CompactSession(ctx, session.ID)
+		require.NoError(t, err)
+		require.Eventually(t, func() bool {
+			p.mu.Lock()
+			defer p.mu.Unlock()
+			return len(p.asked) >= n
+		}, 5*time.Second, 10*time.Millisecond)
+		require.Eventually(t, func() bool {
+			m := marker(t, r, session.ID)
+			return m != nil && m.Status == providerschema.MarkerSummarized
+		}, 5*time.Second, 10*time.Millisecond)
+	}
+	// sent returns the messages, and the system prompt, the model was last sent
+	sent := func() ([]string, string) {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		asked := p.asked[len(p.asked)-1]
+		var texts []string
+		for _, message := range asked.messages {
+			texts = append(texts, message.Text())
+		}
+		system, _ := llm.GetOpt[string](asked.opts, llm.SystemPromptKey)
+		return texts, system
+	}
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Hi")}, nil)
+	require.NoError(t, err)
+	summarizedBy(2)
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Weather?")}, nil)
+	require.NoError(t, err)
+	pending := withPendingMarker(t, store, session.ID)
+	done := r.Summarizing(pending)
+
+	// Until it's written, the messages before it are sent, with the summary
+	// before, so nothing is forgotten, and they're its context
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "And now?")}, nil)
+	require.NoError(t, err)
+	messages, system := sent()
+	assert.Equal(t, []string{"Weather?", "It's sunny", "And now?"}, messages)
+	assert.Contains(t, system, "They said hi.")
+	list, err := r.ListSessionMessages(ctx, session.ID, schema.MessageListRequest{Context: true})
+	require.NoError(t, err)
+	assert.Equal(t, "They said hi.", list.Body[0].Marker.Summary)
+	assert.Len(t, list.Body, 6, "the marker, the messages since, and the pending marker")
+
+	// Once it's written, it's sent in their place, with the messages which
+	// were added as it was written
+	done()
+	summarizedBy(5)
+	assert.Equal(t, pending, marker(t, r, session.ID).ID)
+	_, err = r.Chat(ctx, session.ID, []llm.Message{user(t, "Rain?")}, nil)
+	require.NoError(t, err)
+	messages, system = sent()
+	assert.Equal(t, []string{"And now?", "Still sunny", "Rain?"}, messages)
+	assert.Contains(t, system, "Hi, and it's sunny.")
+	assert.NotContains(t, system, "They said hi.")
+}
+
 func Test_CompactFailedKeepsContext(t *testing.T) {
 	ctx := context.Background()
 
@@ -490,12 +559,12 @@ func Test_RecountContext(t *testing.T) {
 	}
 
 	t.Run("Summarized", func(t *testing.T) {
-		// With nothing sent with the messages, once a marker is added, its
-		// context is the messages after it, of which there are none, yet
+		// With nothing sent with the messages, until a marker's summary is
+		// written, its context is the messages before it, as they're sent
 		session := schema.Session{Messages: slices.Clone(earlier), Usage: schema.SessionUsage{Usage: asked, Input: 400, Output: 600}}
 		session.Messages = append(session.Messages, contextMarker(providerschema.MarkerPending, ""))
 		registry.RecountContext(&session, "")
-		assert.Equal(t, schema.SessionUsage{Usage: asked}, session.Usage)
+		assert.Equal(t, schema.SessionUsage{Usage: asked, Input: 400, Output: 600}, session.Usage)
 
 		// and once its summary is written, it's the summary, which is sent
 		// with the messages, in the system prompt
@@ -516,18 +585,18 @@ func Test_RecountContext(t *testing.T) {
 	t.Run("Again", func(t *testing.T) {
 		// After a reply with an earlier summary, which was sent in the
 		// system prompt, so it's in what's sent with the messages, the
-		// earlier summary is swapped for the summary
+		// earlier summary is swapped for the summary, once it's written
 		old := strings.Repeat("x", 3000)
 		overhead := 50 + registry.SummaryTokens(old)
 		messages := []providerschema.Message{earlier[0], contextMarker(providerschema.MarkerSummarized, old), message("user", "Thanks", 5), message("assistant", "You're welcome", 7)}
 		session := schema.Session{Messages: slices.Clone(messages), Usage: schema.SessionUsage{Usage: asked, Input: 5, Output: 7, Overhead: overhead}}
 		session.Messages = append(session.Messages, contextMarker(providerschema.MarkerPending, ""))
 		registry.RecountContext(&session, old)
-		assert.Equal(t, schema.SessionUsage{Usage: asked, Overhead: 50}, session.Usage, "the earlier summary isn't sent")
+		assert.Equal(t, schema.SessionUsage{Usage: asked, Input: 5, Output: 7, Overhead: overhead}, session.Usage, "the earlier summary is sent")
 		recount(&session, providerschema.MarkerSummarized, "Thanked")
 		assert.Equal(t, schema.SessionUsage{Usage: asked, Overhead: 50 + registry.SummaryTokens("Thanked")}, session.Usage, "the summary is sent once")
 
-		// and when it fails, the earlier summary is sent again, once
+		// and when it fails, the earlier summary is still sent, once
 		session = schema.Session{Messages: slices.Clone(messages), Usage: schema.SessionUsage{Usage: asked, Input: 5, Output: 7, Overhead: overhead}}
 		session.Messages = append(session.Messages, contextMarker(providerschema.MarkerPending, ""))
 		registry.RecountContext(&session, old)

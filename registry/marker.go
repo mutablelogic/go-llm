@@ -33,7 +33,7 @@ const (
 	// when the compact agent has no timeout of its own, after which its
 	// marker is failed, rather than left pending, as when its model's
 	// request hangs
-	DefaultSummaryTimeout = 5 * time.Minute
+	DefaultSummaryTimeout = 15 * time.Minute
 
 	// compactThreshold is how much of its model's context a conversation
 	// fills, as of a reply, before it's compacted, automatically
@@ -389,10 +389,10 @@ func compactTools(tools, namespaces []string) []string {
 }
 
 // recountContext sets the tokens of the session's conversation to those of
-// its context, as it is now, such as once a marker is added, or its summary
-// is written, or fails, so how full its memory is changes then, rather than
-// with its next reply. They're the tokens of the messages after its marker,
-// the replies' as output, and the rest as input. The summary is sent in the
+// its context, as it is now, such as once a marker's summary is written, so
+// how full its memory is changes then, rather than with its next reply.
+// They're the tokens of the messages of its context, the replies' as output,
+// and the rest as input. The summary is sent in the
 // system prompt, so it's part of what's sent with the messages, whose tokens
 // are kept, apart from the summary's, before, which is the summary of its
 // context as it was, which is swapped for its summary, as it is now. Those
@@ -429,41 +429,28 @@ func summaryTokens(summary string) uint {
 }
 
 // contextOf returns the messages of a conversation which are its context,
-// which are those after its last marker, and the summary of the messages
-// before it, once it's written
+// which are those after its last marker whose summary was written, and that
+// summary, which is of the messages before it. A marker whose summary is
+// still being written, or couldn't be, doesn't start the context, so nothing
+// before it is left out, as nothing is sent in its place.
 func contextOf(messages []providerschema.Message) ([]providerschema.Message, string) {
-	// A marker whose summary couldn't be written doesn't start the context,
-	// so nothing before it is left out, which compacting it again summarises
-	i := len(messages) - 1
-	for ; i >= 0; i-- {
-		if marker := messages[i].Marker; marker != nil && marker.Status != providerschema.MarkerFailed {
-			break
-		}
-	}
+	i := lastSummarized(messages)
 	if i < 0 {
 		return withoutMarkers(messages), ""
 	}
-	summary := ""
-	if marker := messages[i].Marker; marker.Status == providerschema.MarkerSummarized {
-		summary = marker.Summary
-	}
-	return withoutMarkers(messages[i+1:]), summary
+	return withoutMarkers(messages[i+1:]), messages[i].Marker.Summary
 }
 
 // contextStart returns the index of the first message of the conversation's
-// context, which is its last marker, whose summary didn't fail, or zero,
-// when it has none
+// context, which is its last marker whose summary was written, or zero, when
+// it has none
 func contextStart(messages []providerschema.Message) int {
-	for i := len(messages) - 1; i >= 0; i-- {
-		if marker := messages[i].Marker; marker != nil && marker.Status != providerschema.MarkerFailed {
-			return i
-		}
-	}
-	return 0
+	return max(lastSummarized(messages), 0)
 }
 
 // withoutMarkers returns the messages without markers, such as those whose
-// summaries couldn't be written, which aren't sent to a model
+// summaries are still being written, or couldn't be, which aren't sent to a
+// model
 func withoutMarkers(messages []providerschema.Message) []providerschema.Message {
 	for _, message := range messages {
 		if message.Marker != nil {
